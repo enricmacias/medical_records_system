@@ -4,7 +4,7 @@
 
 A small modular monolith:
 
-- **Frontend (React + Vite):** upload, list, text preview, editable structured form, poll while `processing`
+- **Frontend (React + Vite):** upload, list, on-demand extracted-text preview, read-only structured record with edit mode, poll while `processing`
 - **Backend (FastAPI):** REST API, orchestration, persistence, in-process background processing
 - **Heuristics + Ollama (host):** hybrid structuring; FakeLLM for tests/demos
 - **SQLite + filesystem:** metadata/JSON in SQLite; PDFs on disk
@@ -93,14 +93,20 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 ## Frontend structure
 
 - List page: records + upload control (upload returns quickly in async mode)
-- Detail page: raw text panel + structured form; **poll `GET /api/records/{id}` ~every 1.5–2s while `status=processing`**
+- Detail page:
+  - **Extracted text** toggle (hidden by default) shows `raw_text` when opened
+  - **Structured record** shown read-only by default (Pet, Owner, Clinical record resume, Medications list, Meta — see `specs/data-model.md` UI presentation)
+  - **Edit** enables fields; **Save corrections** persists via PATCH; **Cancel** exits edit mode (warns if there are unsaved changes)
+  - Success notice after a successful save
+  - **Poll `GET /api/records/{id}` ~every 1.5–2s while `status=processing`**
 - Thin API client calling `/api/*`
 
 ## Testing strategy
 
-- Unit: pdfplumber adapter; heuristics; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
-- Unit/service: async returns `processing`; sync completes; `process_record` failure path
-- API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
+- Backend unit: pdfplumber adapter; heuristics; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
+- Backend unit/service: async returns `processing`; sync completes; `process_record` failure path
+- Backend API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
+- Frontend unit (Vitest + Testing Library): clinical resume / medications display helpers; RecordForm read-only vs edit + save payload; RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice
 - Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice)
 
 ## Future extension points

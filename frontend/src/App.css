@@ -184,6 +184,97 @@ a {
   align-items: start;
 }
 
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.heading-with-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.heading-with-actions h2 {
+  margin: 0;
+}
+
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.heading-action-button {
+  margin-top: 0;
+}
+
+.toast-success {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #9fc5a8;
+  background: #eef7f0;
+  color: #1f5a32;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(20, 28, 24, 0.45);
+}
+
+.modal-dialog {
+  width: min(100%, 26rem);
+  background: white;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  padding: 1.25rem;
+  box-shadow: 0 12px 40px rgba(20, 28, 24, 0.18);
+}
+
+.modal-dialog h3 {
+  margin: 0 0 0.5rem;
+}
+
+.modal-dialog p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+}
+
+.field-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.field-readonly .field-value {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.field-readonly .field-value-block {
+  white-space: pre-wrap;
+}
+
 .back-link {
   display: inline-block;
   margin-bottom: 0.4rem;

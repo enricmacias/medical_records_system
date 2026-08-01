@@ -9,7 +9,7 @@ Provide a Lean MVP that lets a veterinarian:
 1. Upload a pet medical record as a **PDF**
 2. Automatically extract the document text
 3. Structure the most relevant clinical information into a **standardized JSON** shape (heuristics ± local LLM)
-4. Review and **edit** that structured data in a clear web UI
+4. Review structured data in a clear web UI (read-only by default) and **edit** when needed
 
 ## Non-goals (this exercise)
 

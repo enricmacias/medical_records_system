@@ -26,7 +26,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 - [x] pdfplumber adapter
 - [x] Persist `raw_text`
-- [x] Frontend text preview
+- [x] Frontend extracted-text preview (on-demand toggle; hidden by default)
 - [x] Fixture PDF + unit test
 
 ## T4 — Structure with LLM / heuristics
@@ -35,12 +35,13 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Ollama structurer (`format` + schema)
 - [x] FakeLLM structurer
 - [x] Wire into upload pipeline; handle failures
-- [x] Show structured data in UI
+- [x] Show structured data in UI (Pet, Owner, Clinical record resume, Medications list, Meta)
 
 ## T5 — Edit + persist
 
 - [x] `PATCH /api/records/{id}`
-- [x] Editable form bound to structured fields
+- [x] Structured form read-only by default; Edit / Cancel / Save corrections for presented fields
+- [x] Unsaved-changes confirm on Cancel; success notice after save
 - [x] Reload persistence check (covered by tests + UI save)
 
 ## T6 — Polish
@@ -64,3 +65,11 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 - [x] Update scope/architecture/api/data-model/acceptance/tasks for async + hybrid reality
 - [x] Update ADR 0002 and docs summaries; remove async from “future only”
+
+## T9 — Record detail UI + frontend tests (done)
+
+- [x] Collapse extracted text behind **Extracted text**; structured view read-only until **Edit**
+- [x] Clinical record resume (≤1000 chars) + single medications list; keep Pet / Owner / Meta
+- [x] Save next to Cancel; discard warning; save success notice
+- [x] Vitest + Testing Library coverage for helpers, RecordForm, RecordPage
+- [x] Align specs (scope/architecture/data-model/acceptance/tasks) with this UI

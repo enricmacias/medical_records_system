@@ -10,7 +10,7 @@
   - optional **Ollama** structured outputs (`qwen2.5:7b` by default) when heuristics are weak or `LLM_CLINICAL_MODE=llm`
   - **FakeLLM** adapter for tests and demos without Ollama
 - Persist original file, raw text, and structured JSON (SQLite + filesystem)
-- React UI: upload, list, text preview, editable structured record, **processing-state polling**
+- React UI: upload, list, on-demand extracted-text preview, structured record (read-only by default; edit mode for Pet / Owner / clinical resume / medications / Meta), **processing-state polling**
 - REST API (FastAPI)
 - **Async processing by default** (`PROCESSING_MODE=async`): upload returns immediately; extract + structure run in a background task; client polls record status
 - Docker Compose for API + frontend

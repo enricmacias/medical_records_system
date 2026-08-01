@@ -82,15 +82,33 @@ Supports multilingual clinic PDFs (especially Spanish/English), two-column heade
 | `pet.weight` | **Most recent** weight found in the document (with unit when available). |
 | `pet.coat_color` | Coat / Capa / color if present. |
 | `owner.address` | Postal address lines when recoverable from header layout. |
-| `visit` | Summary of the **most recent** visit (date, clinic, vet if known) — not the full history. |
-| `clinical.chief_complaint` / `examination` / `treatment` | Synthesis biased to **recent** clinically important content. |
-| `clinical.history` | Short overall narrative of the case (not every visit verbatim). |
-| `clinical.diagnosis` | Main conditions (comma/semicolon-separated if several). |
-| `clinical.medications` | Important drugs (typically up to ~8); dose/frequency when known. |
-| `clinical.history_entries` | Dated visit highlights. Cap **12** entries: keep early context + most recent visits when the historial is longer. Summaries may be truncated. |
+| `visit` | Summary of the **most recent** visit (date, clinic, vet if known) — not the full history. Stored by the pipeline; **not shown** as its own section in the v1 record form. |
+| `clinical.chief_complaint` / `examination` / `treatment` | Synthesis biased to **recent** clinically important content. Stored by the pipeline; **not directly edited** in the v1 form (may feed the clinical resume fallback). |
+| `clinical.history` | Short overall narrative / **resume of clinic visits**. UI editing targets this field (max **1000** characters). |
+| `clinical.diagnosis` | Main conditions (comma/semicolon-separated if several). Stored; used as resume fallback when history/entries are empty. |
+| `clinical.medications` | Important drugs across visits (typically up to ~8); dose/frequency when known. UI presents as a single multi-line list. |
+| `clinical.history_entries` | Dated visit highlights. Cap **12** entries: keep early context + most recent visits when the historial is longer. Summaries may be truncated. Used to **synthesize the clinical resume** in the UI when `history` is empty; not edited row-by-row in v1. |
 | `meta.source_language` | ISO 639-1 when detectable (`es`, `en`, …). |
 | `meta.extraction_confidence` | Pipeline self-assessment (`low` / `medium` / `high`). |
 | `meta.missing_fields` | Important paths still empty after extraction (e.g. `pet.name`). |
+
+## UI presentation (record detail)
+
+The full JSON above remains the persistence/API contract. The structured form shows a **subset** for human review:
+
+| Section | Source | Notes |
+|---|---|---|
+| Pet | `pet.*` | All pet demographic fields; read-only until Edit. |
+| Owner | `owner.*` | Name, phone, email, address; read-only until Edit. |
+| Clinical record | primarily `clinical.history` | One **Resume of clinic visits** field, max **1000** characters. Display seed: prefer non-empty `history`; else build dated lines from `history_entries`; else join diagnosis / chief_complaint / treatment. |
+| Medications | `clinical.medications` | One multi-line field: one medication per line; optional `Name (dosage, frequency)`. Parsed back into the medications array on save. |
+| Meta | `meta.*` | Confidence, language, missing fields (display only). |
+
+**Not presented** as editable sections in v1: `visit`, `clinical.history_entries` (row editor), `chief_complaint`, `examination`, `diagnosis`, `treatment`, `notes`.
+
+**Edit interaction:** structured sections are read-only by default. **Edit** enables inputs; **Save corrections** PATCHes `structured_data`; **Cancel** exits edit mode and discards unsaved edits (with a confirm dialog when dirty). A success notice is shown after save.
+
+**Save semantics:** the form updates `pet`, `owner`, `clinical.history`, and `clinical.medications` from the visible controls. Other structured keys present on the record (e.g. `visit`, `history_entries`, unused clinical fields) are **retained** in the PATCH payload unless the client omits them — they are not cleared by the v1 UI.
 
 ## Validation rules
 
@@ -99,6 +117,7 @@ Supports multilingual clinic PDFs (especially Spanish/English), two-column heade
 - `meta.extraction_confidence` defaults to `low` if omitted
 - `meta.missing_fields` lists human-readable paths that were null/empty after extraction
 - `meta.source_language` should be an ISO 639-1 code when detectable
+- UI enforces a **1000-character** cap on the clinical resume (`clinical.history` when edited in the form)
 
 ## Extraction notes
 
