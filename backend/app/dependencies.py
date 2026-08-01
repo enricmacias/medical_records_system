@@ -29,6 +29,10 @@ def get_structurer() -> MedicalRecordStructurer:
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         timeout_seconds=settings.ollama_timeout_seconds,
+        skip_demographics_when_hinted=settings.llm_skip_demographics_when_hinted,
+        clinical_mode=settings.llm_clinical_mode,
+        num_predict=settings.ollama_num_predict,
+        num_ctx=settings.ollama_num_ctx,
     )
 
 
@@ -40,6 +44,7 @@ def get_record_service() -> RecordService:
         structurer=get_structurer(),
         upload_dir=Path(settings.upload_dir),
         max_upload_bytes=settings.max_upload_bytes,
+        processing_mode=settings.processing_mode,
     )
 
 

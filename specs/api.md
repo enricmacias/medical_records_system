@@ -24,16 +24,31 @@ Returns service health and LLM reachability.
 }
 ```
 
+Notes:
+
+- `skipped` when `LLM_PROVIDER=fake`
+- `unavailable` means Ollama is not reachable; with `LLM_CLINICAL_MODE=hybrid|heuristic` uploads may still complete via heuristics
+- Does not by itself block record creation
+
 ### `POST /api/records`
 
 Multipart form upload.
 
 - Field: `file` (required) — PDF only
-- Max size: 10 MB
+- Max size: 10 MB (`MAX_UPLOAD_BYTES`)
 
-**Processing (sync):** store file → extract text → structure via LLM → persist → return record.
+**Processing (async by default):** store file → return `status: "processing"` immediately → extract + structure in a background task.
 
-**Response 201** — `RecordResponse`
+**Client contract (async):**
+
+1. Receive `201` with `id` and `status: "processing"`
+2. `raw_text` and `structured_data` are typically `null` until processing finishes
+3. Poll `GET /api/records/{id}` about every **1.5–2 seconds** until `status` is `completed` or `failed`
+4. UI should show a processing state and refresh automatically
+
+Set `PROCESSING_MODE=sync` to wait for the full pipeline before responding (useful for tests).
+
+**Response 201** — `RecordResponse` (often still `processing` in async mode)
 
 **Errors**
 
@@ -42,7 +57,7 @@ Multipart form upload.
 - `422` — validation
 - `500` — unexpected server error
 
-On extraction/LLM failure the endpoint still returns **201** with `status: "failed"` and `error_message` set, so the upload is not lost.
+On unrecoverable extraction/structuring failure the record is updated to `status: "failed"` with `error_message` set (async) or returned that way (sync). LLM timeout with usable heuristics should yield `completed` (see architecture failure matrix).
 
 ### `GET /api/records`
 
@@ -60,6 +75,8 @@ List records (newest first).
 
 **Response 200** — `RecordResponse`  
 **404** — not found
+
+Used as the polling endpoint while `status=processing`.
 
 ### `PATCH /api/records/{id}`
 
@@ -99,6 +116,8 @@ Download/stream the original PDF.
 }
 ```
 
+`pet_name` may be null while `processing` or if structured data has no pet name.
+
 ### RecordResponse
 
 ```json
@@ -114,3 +133,5 @@ Download/stream the original PDF.
   "updated_at": "iso-datetime"
 }
 ```
+
+See `specs/data-model.md` for `MedicalRecord` field semantics.

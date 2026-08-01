@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import Settings
@@ -33,18 +33,26 @@ def health(
 
 @router.post("/records", response_model=RecordResponse, status_code=201)
 async def create_record(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     service: RecordService = Depends(get_record_service),
 ) -> RecordResponse:
     try:
-        # Always return the persisted record. status=failed + error_message
-        # communicate LLM/extraction problems without losing the upload.
-        return await service.create_from_upload(file)
+        record = await service.create_from_upload(file)
     except ValueError as exc:
         message = str(exc)
         if "maximum size" in message:
             raise HTTPException(status_code=413, detail=message) from exc
         raise HTTPException(status_code=400, detail=message) from exc
+
+    # Async mode returns while status=processing; finish LLM work in background.
+    if (
+        service.processing_mode != "sync"
+        and record.status.value == "processing"
+    ):
+        background_tasks.add_task(service.process_record, record.id)
+
+    return record
 
 
 @router.get("/records")

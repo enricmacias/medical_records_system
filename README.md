@@ -95,12 +95,14 @@ See [`specs/api.md`](./specs/api.md).
 
 Architecture notes and ADRs: [`docs/`](./docs/).
 
-## Assumptions
+## Performance notes
 
-- PDFs are text-based (not scanned). OCR is future work.
-- Single-user, no authentication.
-- Ollama reachable from Docker via `host.docker.internal`.
-- LLM may miss or mis-map fields; the editable UI is the safety net.
+- Default `PROCESSING_MODE=async` avoids gateway timeouts: upload returns immediately and the UI polls.
+- Default `LLM_CLINICAL_MODE=hybrid`: for multi-visit PDFs (dated historial), clinical fields are filled from **heuristics** and the slow clinical LLM call is skipped.
+- Demographics LLM is also skipped when header heuristics find `pet.name`.
+- If the LLM is used and times out, the record still completes with heuristic data (no hard failure).
+- Fastest local mode: `LLM_CLINICAL_MODE=heuristic`.
+- Optional smaller model: `OLLAMA_MODEL=llama3.2:3b`.
 
 ## Future improvements
 

@@ -41,8 +41,8 @@ export default function HomePage() {
       <div className="panel">
         <h1>Upload a veterinary PDF</h1>
         <p className="muted">
-          Text is extracted with pdfplumber, then structured locally with Ollama
-          into an editable medical record.
+          Upload returns immediately. Text extraction and local LLM structuring
+          continue in the background — open the record to watch progress.
         </p>
         <label className="upload-button">
           <input
@@ -51,7 +51,7 @@ export default function HomePage() {
             onChange={onFileChange}
             disabled={uploading}
           />
-          {uploading ? 'Processing…' : 'Choose PDF'}
+          {uploading ? 'Uploading…' : 'Choose PDF'}
         </label>
         {health && (
           <p className="health">

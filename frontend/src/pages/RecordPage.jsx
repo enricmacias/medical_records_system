@@ -11,9 +11,28 @@ export default function RecordPage() {
   const [savedAt, setSavedAt] = useState('')
 
   useEffect(() => {
-    getRecord(id)
-      .then(setRecord)
-      .catch((err) => setError(err.message))
+    let cancelled = false
+    let timer
+
+    async function load(poll = false) {
+      try {
+        const data = await getRecord(id)
+        if (cancelled) return
+        setRecord(data)
+        setError('')
+        if (data.status === 'processing') {
+          timer = setTimeout(() => load(true), poll ? 2000 : 1500)
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
   }, [id])
 
   async function onSave(structuredData) {
@@ -43,6 +62,8 @@ export default function RecordPage() {
     return <p className="muted">Loading record…</p>
   }
 
+  const isProcessing = record.status === 'processing'
+
   return (
     <section className="stack">
       <div className="panel heading-row">
@@ -53,6 +74,7 @@ export default function RecordPage() {
           <h1>{record.structured_data?.pet?.name || record.original_filename}</h1>
           <p className="muted">
             Status: {record.status}
+            {isProcessing ? ' — extracting and structuring with the local LLM…' : ''}
             {record.error_message ? ` — ${record.error_message}` : ''}
           </p>
         </div>
@@ -61,10 +83,21 @@ export default function RecordPage() {
         </a>
       </div>
 
+      {isProcessing && (
+        <div className="panel">
+          <p className="muted">
+            Processing can take up to a couple of minutes on a local 7B model. This page
+            refreshes automatically.
+          </p>
+        </div>
+      )}
+
       <div className="split">
         <div className="panel">
           <h2>Extracted text</h2>
-          <pre className="text-preview">{record.raw_text || 'No text extracted.'}</pre>
+          <pre className="text-preview">
+            {record.raw_text || (isProcessing ? 'Waiting for text extraction…' : 'No text extracted.')}
+          </pre>
         </div>
         <div className="panel">
           <div className="heading-row">
@@ -73,12 +106,17 @@ export default function RecordPage() {
           </div>
           {record.structured_data ? (
             <RecordForm
+              key={`${record.id}-${record.updated_at}`}
               initial={record.structured_data}
               onSave={onSave}
               saving={saving}
             />
           ) : (
-            <p className="muted">No structured data available.</p>
+            <p className="muted">
+              {isProcessing
+                ? 'Structured fields will appear when processing finishes.'
+                : 'No structured data available.'}
+            </p>
           )}
           {error && <p className="error">{error}</p>}
         </div>

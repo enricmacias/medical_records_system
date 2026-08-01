@@ -40,6 +40,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("UPLOAD_DIR", str(upload_dir))
     monkeypatch.setenv("LLM_PROVIDER", "fake")
+    monkeypatch.setenv("PROCESSING_MODE", "sync")
     monkeypatch.setenv("CORS_ORIGINS", "http://localhost:5173")
 
     from app import config, dependencies

@@ -9,12 +9,12 @@ function Field({ label, value, onChange }) {
   )
 }
 
-function TextArea({ label, value, onChange }) {
+function TextArea({ label, value, onChange, rows = 3 }) {
   return (
     <label className="field">
       <span>{label}</span>
       <textarea
-        rows={3}
+        rows={rows}
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || null)}
       />
@@ -23,7 +23,17 @@ function TextArea({ label, value, onChange }) {
 }
 
 export default function RecordForm({ initial, onSave, saving }) {
-  const [data, setData] = useState(structuredClone(initial))
+  const [data, setData] = useState(() => {
+    const clone = structuredClone(initial)
+    clone.pet = clone.pet || {}
+    clone.owner = clone.owner || {}
+    clone.visit = clone.visit || {}
+    clone.clinical = clone.clinical || {}
+    clone.clinical.medications = clone.clinical.medications || []
+    clone.clinical.history_entries = clone.clinical.history_entries || []
+    clone.meta = clone.meta || {}
+    return clone
+  })
 
   function setPet(key, value) {
     setData((prev) => ({ ...prev, pet: { ...prev.pet, [key]: value } }))
@@ -62,6 +72,28 @@ export default function RecordForm({ initial, onSave, saving }) {
       },
     }))
   }
+  function setHistoryEntry(index, key, value) {
+    setData((prev) => {
+      const history_entries = [...(prev.clinical.history_entries || [])]
+      history_entries[index] = { ...history_entries[index], [key]: value }
+      return {
+        ...prev,
+        clinical: { ...prev.clinical, history_entries },
+      }
+    })
+  }
+  function addHistoryEntry() {
+    setData((prev) => ({
+      ...prev,
+      clinical: {
+        ...prev.clinical,
+        history_entries: [
+          ...(prev.clinical.history_entries || []),
+          { date: null, summary: null },
+        ],
+      },
+    }))
+  }
 
   return (
     <form
@@ -83,6 +115,17 @@ export default function RecordForm({ initial, onSave, saving }) {
             value={data.pet?.date_of_birth}
             onChange={(v) => setPet('date_of_birth', v)}
           />
+          <Field
+            label="Microchip"
+            value={data.pet?.microchip}
+            onChange={(v) => setPet('microchip', v)}
+          />
+          <Field label="Weight" value={data.pet?.weight} onChange={(v) => setPet('weight', v)} />
+          <Field
+            label="Coat / color"
+            value={data.pet?.coat_color}
+            onChange={(v) => setPet('coat_color', v)}
+          />
         </div>
       </fieldset>
 
@@ -93,6 +136,12 @@ export default function RecordForm({ initial, onSave, saving }) {
           <Field label="Phone" value={data.owner?.phone} onChange={(v) => setOwner('phone', v)} />
           <Field label="Email" value={data.owner?.email} onChange={(v) => setOwner('email', v)} />
         </div>
+        <TextArea
+          label="Address"
+          value={data.owner?.address}
+          onChange={(v) => setOwner('address', v)}
+          rows={2}
+        />
       </fieldset>
 
       <fieldset>
@@ -123,6 +172,7 @@ export default function RecordForm({ initial, onSave, saving }) {
           label="History"
           value={data.clinical?.history}
           onChange={(v) => setClinical('history', v)}
+          rows={4}
         />
         <TextArea
           label="Examination"
@@ -144,6 +194,30 @@ export default function RecordForm({ initial, onSave, saving }) {
           value={data.clinical?.notes}
           onChange={(v) => setClinical('notes', v)}
         />
+
+        <div className="medications">
+          <div className="heading-row">
+            <h3>Visit highlights</h3>
+            <button type="button" className="ghost-button" onClick={addHistoryEntry}>
+              Add
+            </button>
+          </div>
+          {(data.clinical?.history_entries || []).map((entry, index) => (
+            <div className="grid" key={`hist-${index}`}>
+              <Field
+                label="Date"
+                value={entry.date}
+                onChange={(v) => setHistoryEntry(index, 'date', v)}
+              />
+              <TextArea
+                label="Summary"
+                value={entry.summary}
+                onChange={(v) => setHistoryEntry(index, 'summary', v)}
+                rows={2}
+              />
+            </div>
+          ))}
+        </div>
 
         <div className="medications">
           <div className="heading-row">

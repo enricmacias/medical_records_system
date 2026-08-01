@@ -21,45 +21,123 @@ class RecordStatus(str, Enum):
 
 
 class PetInfo(BaseModel):
-    name: str | None = None
-    species: str | None = None
-    breed: str | None = None
-    sex: str | None = None
-    date_of_birth: str | None = None
+    name: str | None = Field(
+        default=None, description="Pet given name (Nombre). Not the owner name."
+    )
+    species: str | None = Field(
+        default=None,
+        description="Species / Especie, e.g. Canino, Felino, dog, cat.",
+    )
+    breed: str | None = Field(default=None, description="Breed / Raza.")
+    sex: str | None = Field(
+        default=None, description="Sex / Sexo, e.g. M, H, Male, Female."
+    )
+    date_of_birth: str | None = Field(
+        default=None,
+        description="Date of birth / F/Nto / F.Nac. Keep original or ISO if clear.",
+    )
+    microchip: str | None = Field(
+        default=None, description="Microchip number / Nº Chip if present."
+    )
+    weight: str | None = Field(
+        default=None,
+        description="Most recent weight with unit if available, e.g. 29.6kg.",
+    )
+    coat_color: str | None = Field(
+        default=None, description="Coat / Capa / color if present."
+    )
 
 
 class OwnerInfo(BaseModel):
-    name: str | None = None
-    phone: str | None = None
-    email: str | None = None
+    name: str | None = Field(
+        default=None,
+        description="Client/owner full name (Datos del Cliente / Nombre del cliente).",
+    )
+    phone: str | None = Field(default=None, description="Phone if present.")
+    email: str | None = Field(default=None, description="Email if present.")
+    address: str | None = Field(
+        default=None,
+        description="Postal address lines for the owner/client if present.",
+    )
 
 
 class VisitInfo(BaseModel):
-    date: str | None = None
-    clinic_name: str | None = None
-    veterinarian: str | None = None
+    date: str | None = Field(
+        default=None,
+        description="Most recent visit date found in the document.",
+    )
+    clinic_name: str | None = Field(
+        default=None,
+        description="Clinic/centre name or brand if present (e.g. Parque Oeste, Kivet).",
+    )
+    veterinarian: str | None = Field(
+        default=None, description="Veterinarian name if explicitly stated."
+    )
 
 
 class Medication(BaseModel):
-    name: str | None = None
-    dosage: str | None = None
-    frequency: str | None = None
+    name: str | None = Field(default=None, description="Medication or product name.")
+    dosage: str | None = Field(default=None, description="Dose amount if stated.")
+    frequency: str | None = Field(
+        default=None, description="Frequency / duration if stated."
+    )
+
+
+class HistoryEntry(BaseModel):
+    date: str | None = Field(default=None, description="Visit date for this entry.")
+    summary: str | None = Field(
+        default=None,
+        description="Short factual summary of what happened on that visit.",
+    )
 
 
 class ClinicalInfo(BaseModel):
-    chief_complaint: str | None = None
-    history: str | None = None
-    examination: str | None = None
-    diagnosis: str | None = None
-    treatment: str | None = None
-    medications: list[Medication] = Field(default_factory=list)
-    notes: str | None = None
+    chief_complaint: str | None = Field(
+        default=None,
+        description="Main reason for the most recent or dominant consultation.",
+    )
+    history: str | None = Field(
+        default=None,
+        description="Concise overall clinical history narrative (not every visit).",
+    )
+    examination: str | None = Field(
+        default=None,
+        description="Key examination findings (latest and clinically important).",
+    )
+    diagnosis: str | None = Field(
+        default=None,
+        description="Main diagnoses / conditions mentioned (comma-separated if several).",
+    )
+    treatment: str | None = Field(
+        default=None,
+        description="Key treatments / plans, especially recent or ongoing.",
+    )
+    medications: list[Medication] = Field(
+        default_factory=list,
+        description="Important medications from recent visits (max ~8).",
+    )
+    history_entries: list[HistoryEntry] = Field(
+        default_factory=list,
+        description="Up to 12 dated visit highlights from a multi-visit history.",
+    )
+    notes: str | None = Field(
+        default=None, description="Other relevant notes for the clinician."
+    )
 
 
 class MetaInfo(BaseModel):
-    source_language: str | None = None
-    extraction_confidence: Literal["low", "medium", "high"] = "low"
-    missing_fields: list[str] = Field(default_factory=list)
+    source_language: str | None = Field(
+        default=None,
+        description="Primary document language as ISO 639-1 code, e.g. es, en, fr.",
+    )
+    extraction_confidence: Literal["low", "medium", "high"] = Field(
+        default="low",
+        description="Confidence in the extraction quality.",
+    )
+    missing_fields: list[str] = Field(
+        default_factory=list,
+        description="Important fields that could not be found in the text.",
+    )
 
 
 class MedicalRecord(BaseModel):

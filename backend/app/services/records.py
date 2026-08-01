@@ -21,12 +21,14 @@ class RecordService:
         structurer: MedicalRecordStructurer,
         upload_dir: Path,
         max_upload_bytes: int,
+        processing_mode: str = "async",
     ) -> None:
         self.store = store
         self.extractor = extractor
         self.structurer = structurer
         self.upload_dir = upload_dir
         self.max_upload_bytes = max_upload_bytes
+        self.processing_mode = processing_mode
         self.upload_dir.mkdir(parents=True, exist_ok=True)
 
     async def create_from_upload(self, file: UploadFile) -> RecordResponse:
@@ -57,7 +59,15 @@ class RecordService:
             status=RecordStatus.processing,
         )
 
+        if self.processing_mode == "sync":
+            return self.process_record(record_id)
+
+        return record
+
+    def process_record(self, record_id: str) -> RecordResponse:
+        """Extract text and structure the record (runs sync or in background)."""
         try:
+            stored_path = Path(self.store.get_stored_path(record_id))
             raw_text = self.extractor.extract(stored_path)
             structured = self.structurer.structure(raw_text)
             return self.store.update_processing_result(

@@ -9,6 +9,12 @@ services:
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: qwen2.5:7b
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      PROCESSING_MODE: ${PROCESSING_MODE:-async}
+      LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED: ${LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED:-true}
+      LLM_CLINICAL_MODE: ${LLM_CLINICAL_MODE:-hybrid}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-90}
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-384}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-4096}
       CORS_ORIGINS: http://localhost:3000,http://localhost:5173
     volumes:
       - app-data:/data

@@ -29,7 +29,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Frontend text preview
 - [x] Fixture PDF + unit test
 
-## T4 — Structure with LLM
+## T4 — Structure with LLM / heuristics
 
 - [x] Domain Pydantic schema matching data-model
 - [x] Ollama structurer (`format` + schema)
@@ -49,3 +49,18 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] `docs/architecture.md` summary + future improvements
 - [x] Sample fixture PDF
 - [x] Acceptance checklist documented
+
+## T7 — Async processing & performance (done)
+
+- [x] `PROCESSING_MODE=async` default with FastAPI `BackgroundTasks`
+- [x] UI polling while `status=processing`
+- [x] Hybrid clinical mode: heuristics-first; skip clinical LLM when hints sufficient
+- [x] Skip demographics LLM when `pet.name` hinted
+- [x] LLM timeout/error falls back to heuristics instead of hard-failing recoverable cases
+- [x] Env knobs: `LLM_CLINICAL_MODE`, `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_NUM_PREDICT`, `OLLAMA_NUM_CTX`
+- [x] Unit tests for hybrid/heuristic modes, fallbacks, async vs sync API
+
+## T8 — Spec alignment (done)
+
+- [x] Update scope/architecture/api/data-model/acceptance/tasks for async + hybrid reality
+- [x] Update ADR 0002 and docs summaries; remove async from “future only”
