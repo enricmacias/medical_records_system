@@ -12,6 +12,7 @@
 - [x] User can list previous records and open one for review
 - [x] Original PDF remains downloadable
 - [x] Spanish multi-visit historial-style text can yield pet/owner demographics, language `es`, visit highlights in stored JSON, and key clinical hints (UI surfaces a clinical resume + medications list; see data-model UI presentation)
+- [x] Inline compound header lines split into separate pet fields — e.g. `ALYA - Nacimiento: 05/07/2018` → name `ALYA` and DOB `05/07/2018`; `Nombre ALYA - Nacimiento: …` and `Hembra Estado: FERTIL Peso:0` handled similarly (`pet.name` must not contain `Nacimiento:`)
 
 ## Technical
 
@@ -21,13 +22,14 @@
 - [x] Default model is `qwen2.5:7b` (env-configurable)
 - [x] Fake LLM adapter allows tests without a live Ollama instance
 - [x] Hybrid/heuristic paths can complete multi-visit records without a live Ollama instance when historial hints exist
+- [x] Hybrid/heuristic paths can complete records with inline compound demographics without a live Ollama instance when header hints suffice
 - [x] Docker Compose starts API + frontend
 - [x] README documents install, Ollama setup, async/hybrid modes, and run steps
 - [x] Specs and architecture docs explain decisions and assumptions
 
 ## Quality bar
 
-- [x] Backend unit/integration tests cover extraction, heuristics/hybrid modes, schema validation, async/sync API paths (with FakeLLM)
+- [x] Backend unit/integration tests cover extraction, heuristics/hybrid modes (including inline compound demographics in `tests/test_inline_demographics.py`), schema validation, async/sync API paths (with FakeLLM)
 - [x] Frontend unit tests (Vitest) cover display helpers, RecordForm view/edit/save, and RecordPage extracted-text / edit-cancel / save-notice flows
 - [x] Failure matrix honored: Ollama down/timeout does not force `failed` when heuristics produce usable structured data; unrecoverable errors set `failed` with `error_message`
 - [x] Health reports Ollama reachability without silently inventing empty structured payloads
@@ -35,8 +37,10 @@
 
 ## Demo path
 
-1. Start stack (`docker compose up` or local dev). Ollama optional for hybrid historial demos; for full LLM narrative pull `qwen2.5:7b` and ensure Ollama is running.
+1. Start stack (`docker compose up` or local dev). Ollama optional for hybrid historial demos and inline compound header demos; for full LLM narrative pull `qwen2.5:7b` and ensure Ollama is running.
 2. Upload sample PDF fixture and/or a Spanish multi-visit style document.
-3. Observe `processing` then `completed` on the record page (async).
-4. Review the **Structured record** (Pet, Owner, Clinical record resume, Medications, Meta). Optionally open **Extracted text**.
-5. Click **Edit**, change a field, **Save corrections** — confirm the success notice; reload and verify the change persists. Optionally change a field and **Cancel** to exercise the unsaved-changes prompt.
+3. Optionally upload or paste-test a document whose header uses **inline compound lines** (`ALYA - Nacimiento: …`, `Nombre … - Nacimiento: …`, or `Hembra … Peso: …`).
+4. Observe `processing` then `completed` on the record page (async).
+5. Review the **Structured record** (Pet, Owner, Clinical record resume, Medications, Meta). Confirm `pet.name` is not a compound string. Optionally open **Extracted text**.
+6. Click **Edit**, change a field, **Save corrections** — confirm the success notice; reload and verify the change persists. Optionally change a field and **Cancel** to exercise the unsaved-changes prompt.
+7. Note: records processed **before** an extraction fix keep old `structured_data` until re-uploaded or manually corrected.

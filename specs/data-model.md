@@ -19,7 +19,7 @@
 
 Unknown values MUST be `null` (or empty list). The pipeline MUST NOT invent clinical facts.
 
-Supports multilingual clinic PDFs (especially Spanish/English), two-column headers, and long multi-visit histories.
+Supports multilingual clinic PDFs (especially Spanish/English), **two-column headers**, **inline compound header lines** (multiple fields on one line), and long multi-visit histories.
 
 ```json
 {
@@ -77,9 +77,10 @@ Supports multilingual clinic PDFs (especially Spanish/English), two-column heade
 
 | Field | Meaning |
 |---|---|
-| `pet.*` | Animal demographics. In two-column headers (`Datos de la Mascota` \| `Datos del Cliente`), pet is left/first name token — not the owner. |
+| `pet.*` | Animal demographics. In two-column headers (`Datos de la Mascota` \| `Datos del Cliente`), pet is left/first name token — not the owner. **`pet.name` MUST be the animal’s name only** — never a compound string such as `ALYA - Nacimiento: 05/07/2018`. Inline heuristics split name vs date of birth on those patterns. Mixed-case names (e.g. `Alya`) are accepted. |
 | `pet.microchip` | Microchip / Nº Chip when present. |
-| `pet.weight` | **Most recent** weight found in the document (with unit when available). |
+| `pet.weight` | **Most recent** weight found in the document. Unit (`kg`, `g`) included when present in the source; bare numbers are kept when the PDF omits a unit (e.g. `Peso:0` → `0`). |
+| `pet.sex` | Sex / gender. Recognized from `Sexo:` labels and standalone line-start words (`Hembra`, `Macho`, `Male`, `Female`). |
 | `pet.coat_color` | Coat / Capa / color if present. |
 | `owner.address` | Postal address lines when recoverable from header layout. |
 | `visit` | Summary of the **most recent** visit (date, clinic, vet if known) — not the full history. Stored by the pipeline; **not shown** as its own section in the v1 record form. |
@@ -121,13 +122,22 @@ The full JSON above remains the persistence/API contract. The structured form sh
 
 ## Extraction notes
 
-1. **Heuristics first** (`adapters/text_hints.py`): normalize text; detect language; parse Spanish/English labels; chip/weight/clinic/address; split dated visit blocks; diagnosis and medication keyword hints.
-2. **Demographics:** if `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED=true` and `pet.name` is hinted, skip demographics LLM and build from hints; otherwise try a short Ollama demographics call and fall back to hints on error.
-3. **Clinical (`LLM_CLINICAL_MODE`):**
+1. **Heuristics first** (`adapters/text_hints.py`): normalize text; detect language; parse Spanish/English labels; chip/weight/clinic/address; split dated visit blocks; diagnosis and medication keyword hints; **inline compound demographic lines** (see below).
+2. **Inline compound demographics** (header region, first ~80 lines):
+   - **`NAME - Nacimiento: DATE`** — e.g. `ALYA - Nacimiento: 05/07/2018` → `pet.name`, `pet.date_of_birth`
+   - **`Nombre NAME - Nacimiento: DATE`** — same split after the `Nombre` prefix
+   - **English `Name NAME - Nacimiento: DATE`** — same pattern for EN labels
+   - **`Hembra Estado: FERTIL Peso:0`** (and `Macho …`) → `pet.sex`, `pet.weight`; **`Estado` (e.g. FERTIL) is not stored** in v1
+   - **Inline `Label: value` segments** on one line: `Nacimiento:`, `Peso:`, `Sexo:`, `Especie:`, `Raza:`, chip labels, etc.
+   - **Compound-name repair:** if a generic `Nombre`/`Name` rule captures the full line into `pet.name`, sanitize and split before persisting; inline hints override earlier guesses when they disagree.
+3. **Demographics LLM:** if `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED=true` and `pet.name` is hinted, skip demographics LLM and build from hints; otherwise try a short Ollama demographics call and fall back to hints on error.
+   - **Caveat:** skip is keyed only on `pet.name` today. A wrong or compound `pet.name` can still skip the LLM and leave DOB/sex/weight empty — compound-line heuristics and sanitization mitigate this; a smarter skip (require name + key fields) is future work.
+4. **Clinical (`LLM_CLINICAL_MODE`):**
    - Always build a clinical baseline from heuristics (`history_entries`, diagnoses, meds, chief/history when possible).
    - `heuristic`: stop here (no clinical LLM).
    - `hybrid` (default): call a **small clinical narrative** LLM only when clinical hints are weak.
    - `llm`: always attempt the clinical narrative LLM.
-4. When LLM is called: JSON Schema is **inlined** (no `$ref`); prompts use a short focused window; `num_predict` / `num_ctx` cap cost.
-5. On LLM timeout/error: **keep heuristic clinical data** and complete when possible; notes may state that LLM narrative was skipped.
-6. Long documents: header + recent tail may be used when sending text to the LLM; visit-block heuristics still see the full normalized text for dating/splitting.
+5. When LLM is called: JSON Schema is **inlined** (no `$ref`); prompts use a short focused window; `num_predict` / `num_ctx` cap cost.
+6. On LLM timeout/error: **keep heuristic clinical data** and complete when possible; notes may state that LLM narrative was skipped.
+7. Long documents: header + recent tail may be used when sending text to the LLM; visit-block heuristics still see the full normalized text for dating/splitting.
+8. **Re-processing:** extraction improvements apply on **new uploads** or when processing runs again; existing `structured_data` is not automatically refreshed until the record is re-processed or the user edits via PATCH.

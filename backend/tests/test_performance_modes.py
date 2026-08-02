@@ -24,6 +24,7 @@ from app.services.records import RecordService
 from app.services.store import RecordStore
 from tests.test_api import _make_sample_pdf_bytes
 from tests.test_spanish_extraction import SPANISH_HEADER
+from tests.test_inline_demographics import INLINE_NOMBRE_DOC
 
 
 THIN_TEXT = """
@@ -123,6 +124,15 @@ def test_heuristic_mode_structures_spanish_without_ollama() -> None:
     assert record.meta.source_language == "es"
     assert record.clinical.history_entries
     assert record.clinical.medications
+
+
+def test_ollama_heuristic_splits_compound_nombre_line_without_llm(
+    ollama_structurer: OllamaStructurer,
+) -> None:
+    record = ollama_structurer.structure(INLINE_NOMBRE_DOC)
+    assert record.pet.name == "ALYA"
+    assert record.pet.date_of_birth == "05/07/2018"
+    assert "Nacimiento" not in (record.pet.name or "")
 
 
 def test_llm_timeout_falls_back_to_heuristics_instead_of_failing() -> None:

@@ -58,6 +58,52 @@ _MEDICATION_NAMES = [
     "Cristalmina",
 ]
 
+_INLINE_LABEL_VALUE = re.compile(
+    r"(?i)(nacimiento|f/?nto|f\.?\s*nac(?:imiento)?|peso|pv|weight|sexo|sex|especie|species|raza|breed|chip|microchip)"
+    r"\s*:\s*"
+    r"([^:]+?)"
+    r"(?=\s+(?:nacimiento|f/?nto|f\.?\s*nac(?:imiento)?|peso|pv|weight|sexo|sex|especie|species|raza|breed|estado|chip|microchip)\s*:|$)",
+)
+
+_INLINE_LABEL_TO_FIELD = {
+    "nacimiento": "pet.date_of_birth",
+    "f/nto": "pet.date_of_birth",
+    "f.nac": "pet.date_of_birth",
+    "f.nacimiento": "pet.date_of_birth",
+    "fechadenacimiento": "pet.date_of_birth",
+    "dateofbirth": "pet.date_of_birth",
+    "dob": "pet.date_of_birth",
+    "peso": "pet.weight",
+    "pv": "pet.weight",
+    "weight": "pet.weight",
+    "sexo": "pet.sex",
+    "sex": "pet.sex",
+    "especie": "pet.species",
+    "species": "pet.species",
+    "raza": "pet.breed",
+    "breed": "pet.breed",
+    "chip": "pet.microchip",
+    "microchip": "pet.microchip",
+    "nchip": "pet.microchip",
+    "nochip": "pet.microchip",
+}
+
+_STANDALONE_SEX_LINE = re.compile(
+    r"(?im)^(?:sexo\s+)?(hembra|macho|male|female)\b",
+)
+
+_NAME_NACIMIENTO_LINE = re.compile(
+    r"(?im)^([A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\-']*)\s*[-–—]\s*nacimiento:\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+)
+
+_NOMBRE_PREFIX_LINE = re.compile(r"(?im)^nombre\s+(.+)$")
+
+_HEMBRA_ESTADO_PESO_LINE = re.compile(
+    r"(?im)^(hembra|macho|male|female)\s+estado:\s*(\S+)\s+peso:\s*([\d.,]+)\s*(kg|g)?",
+)
+
+_DATE_PATTERN = re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}")
+
 
 def normalize_extracted_text(text: str) -> str:
     """Normalize whitespace while preserving line breaks useful for visit dates."""
@@ -193,6 +239,114 @@ def extract_owner_address(text: str) -> str | None:
     return ", ".join(dict.fromkeys(parts)) if parts else None
 
 
+def _normalize_inline_label(label: str) -> str:
+    text = re.sub(r"\s+", " ", label.strip().lower())
+    compact = re.sub(r"\s+", "", text)
+    if compact in _INLINE_LABEL_TO_FIELD:
+        return compact
+    if text in _INLINE_LABEL_TO_FIELD:
+        return text
+    return compact
+
+
+def _normalize_weight_value(raw: str) -> str:
+    value = raw.strip().replace(",", ".")
+    match = re.match(r"^([\d.]+)\s*(kg|g)?$", value, flags=re.I)
+    if not match:
+        return value
+    number = match.group(1)
+    unit = (match.group(2) or "").lower()
+    return f"{number}{unit}" if unit else number
+
+
+def _normalize_inline_value(field: str, raw: str) -> str | None:
+    value = raw.strip()
+    if not value:
+        return None
+    if field == "pet.date_of_birth":
+        date_match = _DATE_PATTERN.search(value)
+        return date_match.group(0) if date_match else None
+    if field == "pet.weight":
+        return _normalize_weight_value(value)
+    if field == "pet.microchip":
+        chip_match = re.search(r"\d{9,20}", value)
+        return chip_match.group(0) if chip_match else None
+    return value
+
+
+def _split_name_and_nacimiento(text: str) -> tuple[str | None, str | None]:
+    """Split 'ALYA - Nacimiento: 05/07/2018' into name and date of birth."""
+    value = text.strip()
+    if not value:
+        return None, None
+    compound = re.match(
+        r"^(.+?)\s*[-–—]\s*nacimiento:\s*(\d{1,2}/\d{1,2}/\d{2,4})\s*$",
+        value,
+        flags=re.I,
+    )
+    if compound:
+        return compound.group(1).strip(), compound.group(2).strip()
+    return value, None
+
+
+def _apply_pet_name_hint(likely: dict[str, str], raw_name: str) -> None:
+    name, dob = _split_name_and_nacimiento(raw_name)
+    if name:
+        likely["pet.name"] = name
+    if dob:
+        likely.setdefault("pet.date_of_birth", dob)
+
+
+def _sanitize_compound_pet_name(likely: dict[str, str]) -> None:
+    raw_name = likely.get("pet.name")
+    if not raw_name or not re.search(r"nacimiento\s*:", raw_name, flags=re.I):
+        return
+    name, dob = _split_name_and_nacimiento(raw_name)
+    if name:
+        likely["pet.name"] = name
+    if dob:
+        likely["pet.date_of_birth"] = dob
+
+
+def extract_inline_demographic_hints(head: str) -> dict[str, str]:
+    """Parse multi-field and inline Label: value lines common in clinic PDF headers."""
+    found: dict[str, str] = {}
+    lines = head.splitlines()[:80]
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        name_dob = _NAME_NACIMIENTO_LINE.match(line)
+        if name_dob:
+            found.setdefault("pet.name", name_dob.group(1).strip())
+            found.setdefault("pet.date_of_birth", name_dob.group(2).strip())
+            continue
+
+        sex_estado_peso = _HEMBRA_ESTADO_PESO_LINE.match(line)
+        if sex_estado_peso:
+            found.setdefault("pet.sex", sex_estado_peso.group(1).strip())
+            weight = _normalize_weight_value(sex_estado_peso.group(3))
+            found.setdefault("pet.weight", weight)
+            continue
+
+        standalone_sex = _STANDALONE_SEX_LINE.match(line)
+        if standalone_sex and "pet.sex" not in found:
+            found["pet.sex"] = standalone_sex.group(1).strip()
+
+        for match in _INLINE_LABEL_VALUE.finditer(line):
+            label = _normalize_inline_label(match.group(1))
+            field = _INLINE_LABEL_TO_FIELD.get(label)
+            if not field or field in found:
+                continue
+            normalized = _normalize_inline_value(field, match.group(2))
+            if normalized:
+                found[field] = normalized
+
+    return found
+
+
 def build_layout_hints(text: str) -> dict[str, Any]:
     """Produce non-authoritative hints from common ES/EN clinic header labels."""
     head = "\n".join(text.splitlines()[:80])
@@ -212,12 +366,22 @@ def build_layout_hints(text: str) -> dict[str, Any]:
         hints["likely_fields"]["pet.microchip"] = chip.group(1)
 
     weights = re.findall(
-        r"(?:peso|pv|weight)?\s*[:=]?\s*(\d{1,2}(?:[.,]\d{1,2})?\s*kg)",
+        r"(?i)(?:peso|pv|weight)\s*:\s*([\d.,]+)\s*(kg|g)?",
         text,
-        flags=re.I,
     )
     if weights:
-        hints["likely_fields"]["pet.weight"] = weights[-1].replace(",", ".")
+        last = weights[-1]
+        number = str(last[0]).replace(",", ".")
+        unit = (last[1] or "").lower()
+        hints["likely_fields"]["pet.weight"] = f"{number}{unit}" if unit else number
+    if "pet.weight" not in hints["likely_fields"]:
+        kg_weights = re.findall(
+            r"(?:peso|pv|weight)?\s*[:=]?\s*(\d{1,2}(?:[.,]\d{1,2})?\s*kg)",
+            text,
+            flags=re.I,
+        )
+        if kg_weights:
+            hints["likely_fields"]["pet.weight"] = kg_weights[-1].replace(",", ".")
 
     clinic = extract_clinic_name(text)
     if clinic:
@@ -234,6 +398,15 @@ def build_layout_hints(text: str) -> dict[str, Any]:
     if nombre_line:
         hints["likely_fields"]["pet.name"] = nombre_line.group(1).strip()
         hints["likely_fields"]["owner.name"] = nombre_line.group(2).strip()
+
+    for raw_line in head.splitlines():
+        nombre_prefixed = _NOMBRE_PREFIX_LINE.match(raw_line.strip())
+        if not nombre_prefixed:
+            continue
+        rest = nombre_prefixed.group(1).strip()
+        if re.search(r"nacimiento\s*:", rest, flags=re.I):
+            _apply_pet_name_hint(hints["likely_fields"], rest)
+            break
 
     especie = re.search(
         r"(?im)^especie\s+(canino|felino|gato|perro|ave|reptil|canine|feline|dog|cat)\b",
@@ -277,7 +450,17 @@ def build_layout_hints(text: str) -> dict[str, Any]:
         label = "|".join(labels)
         match = re.search(rf"(?im)^(?:{label})\s*[:\-]?\s+(.+?)\s*$", head)
         if match:
-            hints["likely_fields"][target] = match.group(1).strip()
+            value = match.group(1).strip()
+            if target == "pet.name":
+                _apply_pet_name_hint(hints["likely_fields"], value)
+            else:
+                hints["likely_fields"][target] = value
+
+    inline = extract_inline_demographic_hints(head)
+    for key, value in inline.items():
+        hints["likely_fields"][key] = value
+
+    _sanitize_compound_pet_name(hints["likely_fields"])
 
     return hints
 

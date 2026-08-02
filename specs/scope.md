@@ -6,7 +6,7 @@
 - PDF upload only (text-based / digitally generated PDFs)
 - Text extraction with **pdfplumber**
 - Structured extraction via a **hybrid pipeline**:
-  - layout/visit **heuristics** (Spanish/English clinic headers, dated historial blocks, diagnosis/med hints)
+  - layout/visit **heuristics** (Spanish/English clinic headers — including **inline compound lines** such as `ALYA - Nacimiento: DATE` and `Hembra Estado: … Peso: …`; dated historial blocks; diagnosis/med hints)
   - optional **Ollama** structured outputs (`qwen2.5:7b` by default) when heuristics are weak or `LLM_CLINICAL_MODE=llm`
   - **FakeLLM** adapter for tests and demos without Ollama
 - Persist original file, raw text, and structured JSON (SQLite + filesystem)

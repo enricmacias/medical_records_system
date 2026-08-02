@@ -12,7 +12,7 @@ A small modular monolith:
 ```text
 React ──HTTP──▶ FastAPI
                   ├── adapters/pdfplumber     → raw text
-                  ├── adapters/text_hints     → layout/visit/diagnosis heuristics
+                  ├── adapters/text_hints     → layout/visit/diagnosis + inline compound demographics
                   ├── adapters/ollama|fake    → optional LLM narrative / FakeLLM
                   └── services/storage        → SQLite + files
 ```
@@ -52,7 +52,7 @@ In-process FastAPI `BackgroundTasks` is intentional for Lean MVP — not a durab
 | Mode | Behavior |
 |---|---|
 | `heuristic` | No clinical LLM call; demographics/clinical from heuristics only (fastest) |
-| `hybrid` (default) | Heuristics first; clinical LLM only when clinical hints are weak; demographics LLM skipped when `pet.name` is hinted |
+| `hybrid` (default) | Heuristics first; clinical LLM only when clinical hints are weak; demographics LLM skipped when `pet.name` is hinted (see caveat in `specs/data-model.md` extraction notes) |
 | `llm` | Always attempt clinical narrative LLM (slowest; may timeout on large historiales) |
 
 **Heuristic sufficiency (clinical):** at least one dated visit block, or diagnosis hints, or medication hints.
@@ -83,7 +83,7 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 | `LLM_PROVIDER` | `ollama` | `ollama` or `fake` |
 | `PROCESSING_MODE` | `async` | `async` or `sync` |
 | `LLM_CLINICAL_MODE` | `hybrid` | `heuristic` \| `hybrid` \| `llm` |
-| `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED` | `true` | Skip demographics LLM when `pet.name` found |
+| `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED` | `true` | Skip demographics LLM when `pet.name` found in heuristics (fragile if name is wrong/compound — see data-model extraction notes) |
 | `OLLAMA_TIMEOUT_SECONDS` | `90` | HTTP timeout for Ollama calls |
 | `OLLAMA_NUM_PREDICT` | `384` | Max generated tokens when LLM is called |
 | `OLLAMA_NUM_CTX` | `4096` | Context window for Ollama options |
@@ -103,11 +103,11 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 
 ## Testing strategy
 
-- Backend unit: pdfplumber adapter; heuristics; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
+- Backend unit: pdfplumber adapter; heuristics (including **inline compound demographics** in `tests/test_inline_demographics.py`); hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
 - Backend unit/service: async returns `processing`; sync completes; `process_record` failure path
 - Backend API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
 - Frontend unit (Vitest + Testing Library): clinical resume / medications display helpers; RecordForm read-only vs edit + save payload; RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice
-- Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice)
+- Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF with inline compound header lines
 
 ## Future extension points
 

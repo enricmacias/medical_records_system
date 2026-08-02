@@ -73,3 +73,12 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Save next to Cancel; discard warning; save success notice
 - [x] Vitest + Testing Library coverage for helpers, RecordForm, RecordPage
 - [x] Align specs (scope/architecture/data-model/acceptance/tasks) with this UI
+
+## T10 — Inline compound demographics + tests (done)
+
+- [x] Parse inline compound header lines (`NAME - Nacimiento: DATE`, `Nombre …`, `Hembra Estado: … Peso: …`)
+- [x] Inline `Label: value` segments; weight without `kg`; standalone `Hembra`/`Macho`; mixed-case names
+- [x] Compound-name sanitization when generic `Nombre`/`Name` captures the full line
+- [x] Inline hints override/repair earlier `pet.name` guesses
+- [x] `tests/test_inline_demographics.py` + updates to Spanish/performance integration tests
+- [x] Align specs (data-model extraction notes, scope, architecture, acceptance, tasks)

@@ -6,6 +6,11 @@ from app.adapters.text_hints import (
     detect_language_hint,
     extract_visit_blocks,
 )
+from tests.test_inline_demographics import (
+    INLINE_ALYA_DOC,
+    INLINE_HEMBRA_DOC,
+    INLINE_NOMBRE_DOC,
+)
 
 
 SPANISH_HEADER = """
@@ -87,3 +92,28 @@ def test_ollama_hybrid_skips_llm_when_historial_hints_exist() -> None:
     assert record.meta.source_language == "es"
     assert record.clinical.history_entries
     assert record.clinical.diagnosis
+
+
+def test_inline_compound_lines_in_layout_hints() -> None:
+    """Integration check: compound header lines map to separate pet fields."""
+    aliya = build_layout_hints(INLINE_ALYA_DOC)["likely_fields"]
+    assert aliya["pet.name"] == "ALYA"
+    assert aliya["pet.date_of_birth"] == "05/07/2018"
+
+    nombre = build_layout_hints(INLINE_NOMBRE_DOC)["likely_fields"]
+    assert nombre["pet.name"] == "ALYA"
+    assert nombre["pet.date_of_birth"] == "05/07/2018"
+
+    hembra = build_layout_hints(INLINE_HEMBRA_DOC)["likely_fields"]
+    assert hembra["pet.sex"] == "Hembra"
+    assert hembra["pet.weight"] == "0"
+
+
+def test_fake_llm_structures_inline_compound_headers() -> None:
+    aliya = FakeLLMStructurer().structure(INLINE_ALYA_DOC)
+    assert aliya.pet.name == "ALYA"
+    assert aliya.pet.date_of_birth == "05/07/2018"
+
+    hembra = FakeLLMStructurer().structure(INLINE_HEMBRA_DOC)
+    assert hembra.pet.sex == "Hembra"
+    assert hembra.pet.weight == "0"
