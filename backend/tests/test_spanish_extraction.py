@@ -70,10 +70,8 @@ def test_fake_llm_structures_spanish_historial() -> None:
     assert record.owner.name and "BEATRIZ" in record.owner.name
     assert record.pet.microchip == "941000024967769"
     assert record.pet.species == "Dog"
-    assert record.clinical.history_entries
-    assert record.clinical.diagnosis
-    assert record.clinical.medications
-    assert record.visit.clinic_name == "Parque Oeste"
+    assert record.clinical.history
+    assert "Giardiasis" in record.clinical.history or "giardia" in record.clinical.history.lower()
 
 
 def test_ollama_hybrid_skips_llm_when_historial_hints_exist() -> None:
@@ -90,8 +88,7 @@ def test_ollama_hybrid_skips_llm_when_historial_hints_exist() -> None:
     record = structurer.structure(SPANISH_HEADER)
     assert record.pet.name == "MARLEY"
     assert record.meta.source_language == "es"
-    assert record.clinical.history_entries
-    assert record.clinical.diagnosis
+    assert record.clinical.history
 
 
 def test_inline_compound_lines_in_layout_hints() -> None:

@@ -50,10 +50,10 @@ In-process FastAPI `BackgroundTasks` is intentional for Lean MVP — not a durab
 
 ## Structuring strategy (`LLM_CLINICAL_MODE`)
 
-Clinical structuring uses **two optional LLM passes** after heuristics (see `specs/data-model.md` extraction notes §6–7):
+Clinical structuring uses **two optional LLM passes** after heuristics (see `specs/data-model.md` extraction notes §5–6):
 
-1. **Clinical narrative LLM** (`ClinicalNarrative`) — fills `chief_complaint`, `examination`, `treatment`, `notes` (and transient `history` overwritten later).
-2. **Clinical summary** — always sets `clinical.history` via heuristic prose; optional **summary polish** LLM rewrites that baseline.
+1. **Clinical narrative LLM** (`ClinicalNarrative`) — fills workspace fields (`chief_complaint`, `examination`, `treatment`, `notes`; not persisted).
+2. **Clinical summary** — always sets persisted `clinical.history` via heuristic prose; optional **summary polish** LLM rewrites that baseline.
 
 | Mode | Clinical narrative LLM | Summary polish LLM | Clinical summary source |
 |---|---|---|---|
@@ -63,7 +63,7 @@ Clinical structuring uses **two optional LLM passes** after heuristics (see `spe
 
 **Heuristic sufficiency (clinical):** at least one dated visit block, or diagnosis hints, or medication hints.
 
-**Demographics LLM:** skipped when `pet.name` is hinted (`LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED`); see data-model caveat.
+**Demographics LLM:** skipped when `pet.name` is hinted (`LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED`); see data-model extraction note §4 (caveat on `pet.name`-only skip).
 
 **On LLM timeout/error:** keep heuristic clinical fields and heuristic summary; complete the record when possible; do not fail solely because Ollama timed out.
 
@@ -74,7 +74,7 @@ Clinical structuring uses **two optional LLM passes** after heuristics (see `spe
 | Invalid/non-PDF/oversized upload | HTTP 400/413; no record (or not created) |
 | PDF stored; text extract + structure succeed | `completed` |
 | Multi-visit PDF; Ollama down; heuristics sufficient (`hybrid`/`heuristic`) | `completed` (heuristic-filled structured data + heuristic clinical summary) |
-| Clinical narrative LLM attempted and times out; heuristics already filled clinical | `completed` (notes may mention narrative skipped; heuristic summary still set) |
+| Clinical narrative LLM attempted and times out; workspace already has clinical hints | `completed` (heuristic clinical summary still set) |
 | Summary polish LLM attempted and times out; heuristic summary exists | `completed` (heuristic summary retained) |
 | Structurer raises with no recoverable structured data | `failed` + `error_message` |
 | FakeLLM provider | `completed` in tests/demos without Ollama |
@@ -92,7 +92,7 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 | `LLM_PROVIDER` | `ollama` | `ollama` or `fake` |
 | `PROCESSING_MODE` | `async` | `async` or `sync` |
 | `LLM_CLINICAL_MODE` | `hybrid` | `heuristic` \| `hybrid` \| `llm` |
-| `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED` | `true` | Skip demographics LLM when `pet.name` found in heuristics (fragile if name is wrong/compound — see data-model extraction notes) |
+| `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED` | `true` | Skip demographics LLM when `pet.name` found in heuristics (see data-model extraction note §4) |
 | `OLLAMA_TIMEOUT_SECONDS` | `90` | HTTP timeout for Ollama calls |
 | `OLLAMA_NUM_PREDICT` | `384` | Max generated tokens when LLM is called |
 | `OLLAMA_NUM_CTX` | `4096` | Context window for Ollama options |
@@ -104,8 +104,8 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 - List page: records + upload control (upload returns quickly in async mode)
 - Detail page:
   - **Extracted text** toggle (hidden by default) shows `raw_text` when opened
-  - **Structured record** shown read-only by default (Pet — six fields with Dog/Cat species; Owner; **Clinical summary**; Medications list; Meta — see `specs/data-model.md` UI presentation)
-  - **Edit** enables fields; **Save corrections** persists via PATCH; **Cancel** exits edit mode (warns if there are unsaved changes)
+  - **Structured record** shown read-only by default (Pet — six demographic fields with Dog/Cat species; Owner; **Clinical summary**; Meta — see `specs/data-model.md` UI presentation)
+  - **Edit** enables Pet and Owner only; **Save corrections** persists via PATCH; **Cancel** exits edit mode (warns if there are unsaved changes)
   - Success notice after a successful save
   - **Poll `GET /api/records/{id}` ~every 1.5–2s while `status=processing`**
 - Thin API client calling `/api/*`
@@ -115,7 +115,7 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 - Backend unit: pdfplumber adapter; heuristics (inline compound demographics in `tests/test_inline_demographics.py`; label-free species/breed in `tests/test_unlabeled_species_breed.py`); clinical summary in `tests/test_clinical_summary.py`; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
 - Backend unit/service: async returns `processing`; sync completes; `process_record` failure path
 - Backend API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
-- Frontend unit (Vitest + Testing Library): clinical summary display helpers (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); RecordForm read-only clinical summary + edit/save payload (six pet fields, summary preserved on save); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice
+- Frontend unit (Vitest + Testing Library): clinical summary display (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); RecordForm (six pet fields, Owner, summary read-only, preserved on save); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice
 - Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF with inline compound header lines and/or label-free species/breed header lines; optionally verify polished clinical summary when Ollama is available
 
 ## Future extension points

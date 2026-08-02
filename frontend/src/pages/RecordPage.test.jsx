@@ -23,12 +23,7 @@ const structuredData = {
     microchip: '941000024967769',
   },
   owner: { name: 'Beatriz', phone: null, email: null, address: null },
-  visit: {},
-  clinical: {
-    history: 'Visit summary',
-    history_entries: [],
-    medications: [{ name: 'Tobradex', dosage: null, frequency: null }],
-  },
+  clinical: { history: 'Visit summary' },
   meta: {
     extraction_confidence: 'medium',
     source_language: 'es',

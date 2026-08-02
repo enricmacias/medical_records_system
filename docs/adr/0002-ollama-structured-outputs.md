@@ -27,7 +27,7 @@ We need free, local structuring into a fixed JSON schema, without cloud API cost
 ## Consequences
 
 - Multi-visit Spanish clinic PDFs often complete with heuristic clinical summary without narrative LLM; hybrid may still call Ollama for summary polish when hints are strong
-- JSON shape remains validated by Pydantic; humans edit pet, owner, and medications in the UI (clinical summary is read-only in v1)
+- JSON shape remains validated by Pydantic; humans edit **pet** (six fields) and **owner** in the UI; clinical summary is read-only in v1
 - Reviewers can use `LLM_PROVIDER=fake` or hybrid without a GPU (FakeLLM produces heuristic summary)
 - Heuristics are template-biased (stronger on ES/EN clinic headers, including label-free species/breed lines); unusual formats still benefit from `llm` mode when hardware allows
 - “Ollama unavailable” is not always a hard failure under hybrid/heuristic modes

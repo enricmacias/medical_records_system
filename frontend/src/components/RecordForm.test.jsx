@@ -19,14 +19,8 @@ const sampleRecord = {
     email: null,
     address: 'Madrid',
   },
-  visit: {},
   clinical: {
     history: 'Stored clinical summary from extraction.',
-    history_entries: [
-      { date: '08/12/19', summary: 'Emergency visit' },
-      { date: '03/10/20', summary: 'Conjunctivitis' },
-    ],
-    medications: [{ name: 'Tobradex', dosage: null, frequency: null }],
   },
   meta: {
     extraction_confidence: 'medium',
@@ -36,7 +30,7 @@ const sampleRecord = {
 }
 
 describe('RecordForm', () => {
-  it('renders pet identity fields and other structured sections read-only by default', () => {
+  it('renders only pet, owner, clinical summary, and meta sections', () => {
     render(
       <RecordForm
         initial={sampleRecord}
@@ -49,9 +43,11 @@ describe('RecordForm', () => {
     expect(screen.getByText('Pet')).toBeInTheDocument()
     expect(screen.getByText('Marley')).toBeInTheDocument()
     expect(screen.getByText('Dog')).toBeInTheDocument()
+    expect(screen.getByText('Owner')).toBeInTheDocument()
     expect(screen.getAllByText('Clinical summary').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Stored clinical summary from extraction.')).toBeInTheDocument()
-    expect(screen.getByText('Tobradex')).toBeInTheDocument()
+    expect(screen.getByText('Meta')).toBeInTheDocument()
+    expect(screen.queryByText('Medications')).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
@@ -59,7 +55,6 @@ describe('RecordForm', () => {
     const multiParagraph = {
       ...sampleRecord,
       clinical: {
-        ...sampleRecord.clinical,
         history: 'First paragraph about giardiasis.\n\nSecond paragraph about visits.',
       },
     }
@@ -133,7 +128,7 @@ describe('RecordForm', () => {
     })
   })
 
-  it('preserves clinical summary on save and updates medications', async () => {
+  it('preserves clinical summary on save and only sends persisted fields', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
 
@@ -153,17 +148,17 @@ describe('RecordForm', () => {
 
     expect(screen.queryByLabelText(/Clinical summary/)).not.toBeInTheDocument()
 
-    const meds = screen.getByLabelText(/All medications/)
-    await user.clear(meds)
-    await user.type(meds, 'Fortiflora (1 sachet, daily)')
+    const phone = screen.getByLabelText('Phone')
+    await user.type(phone, '+34 600 000 000')
 
     await user.click(screen.getByRole('button', { name: 'Save corrections' }))
 
     expect(onSave).toHaveBeenCalledTimes(1)
     const payload = onSave.mock.calls[0][0]
     expect(payload.clinical.history).toBe('Stored clinical summary from extraction.')
-    expect(payload.clinical.medications).toEqual([
-      { name: 'Fortiflora', dosage: '1 sachet', frequency: 'daily' },
-    ])
+    expect(payload.owner.phone).toBe('+34 600 000 000')
+    expect(payload.pet.breed).toBe('Labrador')
+    expect(payload.meta).toEqual(sampleRecord.meta)
+    expect(Object.keys(payload)).toEqual(['pet', 'owner', 'clinical', 'meta'])
   })
 })

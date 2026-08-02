@@ -19,7 +19,12 @@ from app.adapters.llm import (
 )
 from app.adapters.pdf_extractor import PdfplumberExtractor
 from app.adapters.text_hints import build_layout_hints
-from app.domain.models import ClinicalInfo, MedicalRecord, Medication, PetInfo
+from app.domain.extraction_models import (
+    ExtractionClinicalInfo,
+    ExtractionRecord,
+    Medication,
+)
+from app.domain.models import MedicalRecord, PetInfo
 from app.services.records import RecordService
 from app.services.store import RecordStore
 from tests.test_api import _make_sample_pdf_bytes
@@ -85,7 +90,7 @@ def test_clinical_from_hints_builds_visit_medications_and_diagnosis(
 def test_merge_narrative_overwrites_only_non_empty_fields(
     ollama_structurer: OllamaStructurer,
 ) -> None:
-    base = ClinicalInfo(
+    base = ExtractionClinicalInfo(
         chief_complaint="old chief",
         history="old history",
         examination=None,
@@ -120,14 +125,12 @@ def test_heuristic_mode_structures_spanish_without_ollama() -> None:
     assert record.pet.name == "MARLEY"
     assert record.owner.name and "BEATRIZ" in record.owner.name
     assert record.pet.microchip == "941000024967769"
-    assert record.visit.clinic_name == "Parque Oeste"
     assert record.meta.source_language == "es"
-    assert record.clinical.history_entries
-    assert record.clinical.medications
     assert record.clinical.history
     assert len(record.clinical.history) <= 2000
     assert "El expediente documenta" in record.clinical.history
     assert "MARLEY" not in record.clinical.history
+    assert not hasattr(record, "visit")
 
 
 def test_ollama_heuristic_splits_compound_nombre_line_without_llm(
@@ -149,12 +152,7 @@ def test_llm_timeout_falls_back_to_heuristics_instead_of_failing() -> None:
     )
     record = structurer.structure(SPANISH_HEADER)
     assert record.pet.name == "MARLEY"
-    assert record.clinical.history_entries
-    assert record.clinical.diagnosis
-    assert record.clinical.notes
-    assert "skipped" in (record.clinical.notes or "").lower() or "heuristic" in (
-        record.clinical.notes or ""
-    ).lower()
+    assert record.clinical.history
 
 
 def test_demographics_llm_failure_falls_back_to_hints() -> None:

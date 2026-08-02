@@ -35,7 +35,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Ollama structurer (`format` + schema)
 - [x] FakeLLM structurer
 - [x] Wire into upload pipeline; handle failures
-- [x] Show structured data in UI (Pet, Owner, Clinical summary, Medications list, Meta)
+- [x] Show structured data in UI (Pet, Owner, Clinical summary, Meta)
 
 ## T5 — Edit + persist
 
@@ -69,7 +69,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 ## T9 — Record detail UI + frontend tests (done)
 
 - [x] Collapse extracted text behind **Extracted text**; structured view read-only until **Edit**
-- [x] Clinical summary (≤2000 chars, extraction-time prose) + single medications list; keep Pet / Owner / Meta
+- [x] Clinical summary (≤2000 chars, extraction-time prose); slim persisted schema (Pet / Owner / clinical.history / Meta)
 - [x] Save next to Cancel; discard warning; save success notice
 - [x] Vitest + Testing Library coverage for helpers, RecordForm, RecordPage
 - [x] Align specs (scope/architecture/data-model/acceptance/tasks) with this UI
@@ -100,7 +100,14 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 - [x] `adapters/clinical_summary.py`: heuristic prose summary → `clinical.history` (≤2000 chars, Spanish/English, sanitization)
 - [x] Optional LLM summary polish pass (`ClinicalSummaryPolish`); gating per `LLM_CLINICAL_MODE` (inverse of narrative LLM in hybrid)
-- [x] UI **Clinical summary** section: read-only always; paragraph preservation; legacy display fallback
+- [x] UI **Clinical summary** section: read-only always; paragraph preservation
 - [x] Save preserves loaded `clinical.history`; dirty check excludes summary
 - [x] `tests/test_clinical_summary.py`; frontend RecordForm / `recordDisplay` tests
-- [x] Align specs (data-model extraction §6–7, architecture, acceptance, scope, tasks, ADR, README)
+- [x] Align specs (data-model extraction notes, architecture, acceptance, scope, tasks, ADR, README)
+
+## T14 — Slim persisted structured record (done)
+
+- [x] Persist only pet (six fields), owner, `clinical.history`, and meta via `to_persisted_record()`
+- [x] Remove Medications section and non-persisted clinical/visit fields from UI and PATCH payload
+- [x] Extraction workspace (`ExtractionRecord`) retains visit/meds/diagnosis for summary generation only
+- [x] Align specs (data-model, acceptance, architecture, scope, tasks, problem, docs)

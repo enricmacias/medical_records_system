@@ -3,10 +3,8 @@ import {
   buildClinicalResume,
   buildStructuredPetPayload,
   displaySpecies,
-  formatMedicationsList,
   isStructuredRecordDirty,
   normalizeSpeciesForStorage,
-  parseMedicationsList,
 } from '../lib/recordDisplay'
 
 export const STRUCTURED_FORM_ID = 'structured-record-form'
@@ -33,7 +31,7 @@ function Field({ label, value, onChange, editing }) {
   )
 }
 
-function TextArea({ label, value, onChange, rows = 3, maxLength, hint, editing }) {
+function TextArea({ label, value, onChange, rows = 3, hint, editing }) {
   if (!editing) {
     return (
       <div className="field field-readonly">
@@ -42,22 +40,11 @@ function TextArea({ label, value, onChange, rows = 3, maxLength, hint, editing }
       </div>
     )
   }
-  const length = (value ?? '').length
   return (
     <label className="field">
       <span>{label}</span>
-      <textarea
-        rows={rows}
-        maxLength={maxLength}
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value || null)}
-      />
-      {hint || maxLength ? (
-        <span className="field-hint">
-          {hint}
-          {maxLength ? `${length}/${maxLength}` : ''}
-        </span>
-      ) : null}
+      <textarea rows={rows} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)} />
+      {hint ? <span className="field-hint">{hint}</span> : null}
     </label>
   )
 }
@@ -97,32 +84,18 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
     const clone = structuredClone(initial)
     clone.pet = normalizePetForForm(clone.pet || {})
     clone.owner = clone.owner || {}
-    clone.visit = clone.visit || {}
     clone.clinical = clone.clinical || {}
-    clone.clinical.medications = clone.clinical.medications || []
-    clone.clinical.history_entries = clone.clinical.history_entries || []
     clone.meta = clone.meta || {}
     return clone
   }, [initial])
 
   const clinicalSummary = useMemo(() => buildClinicalResume(seed.clinical), [seed])
-  const baselineMedications = useMemo(
-    () => formatMedicationsList(seed.clinical.medications),
-    [seed],
-  )
 
   const [data, setData] = useState(seed)
-  const [medicationsText, setMedicationsText] = useState(baselineMedications)
 
   const dirty = useMemo(
-    () =>
-      isStructuredRecordDirty({
-        data,
-        seed,
-        medicationsText,
-        baselineMedications,
-      }),
-    [data, medicationsText, seed, baselineMedications],
+    () => isStructuredRecordDirty({ data, seed }),
+    [data, seed],
   )
 
   useEffect(() => {
@@ -140,16 +113,17 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
   function handleSave(event) {
     event.preventDefault()
     if (!editing) return
-    const payload = {
-      ...data,
+    onSave({
       pet: buildStructuredPetPayload(data.pet),
-      clinical: {
-        ...data.clinical,
-        history: seed.clinical?.history ?? null,
-        medications: parseMedicationsList(medicationsText),
+      owner: {
+        name: data.owner?.name?.trim() || null,
+        phone: data.owner?.phone?.trim() || null,
+        email: data.owner?.email?.trim() || null,
+        address: data.owner?.address?.trim() || null,
       },
-    }
-    onSave(payload)
+      clinical: { history: seed.clinical?.history ?? null },
+      meta: seed.meta || {},
+    })
   }
 
   return (
@@ -239,18 +213,6 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
           rows={8}
           hint="Auto-generated on upload; not editable."
           editing={false}
-        />
-      </fieldset>
-
-      <fieldset disabled={!editing}>
-        <legend>Medications</legend>
-        <TextArea
-          label="All medications"
-          value={medicationsText}
-          onChange={(v) => setMedicationsText(v ?? '')}
-          rows={6}
-          hint="One medication per line (optional dosage/frequency in parentheses)."
-          editing={editing}
         />
       </fieldset>
 

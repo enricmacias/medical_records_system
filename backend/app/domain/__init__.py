@@ -1,8 +1,15 @@
+from app.domain.extraction_models import (
+    ExtractionClinicalInfo,
+    ExtractionRecord,
+    HistoryEntry,
+    Medication,
+    VisitInfo,
+    to_persisted_record,
+)
 from app.domain.models import (
     ClinicalInfo,
     HealthResponse,
     MedicalRecord,
-    Medication,
     MetaInfo,
     OwnerInfo,
     PetInfo,
@@ -10,14 +17,16 @@ from app.domain.models import (
     RecordResponse,
     RecordStatus,
     RecordSummary,
-    VisitInfo,
     new_record_id,
     utcnow,
 )
 
 __all__ = [
     "ClinicalInfo",
+    "ExtractionClinicalInfo",
+    "ExtractionRecord",
     "HealthResponse",
+    "HistoryEntry",
     "MedicalRecord",
     "Medication",
     "MetaInfo",
@@ -29,5 +38,6 @@ __all__ = [
     "RecordSummary",
     "VisitInfo",
     "new_record_id",
+    "to_persisted_record",
     "utcnow",
 ]

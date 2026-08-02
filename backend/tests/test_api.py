@@ -82,7 +82,8 @@ def test_upload_and_structure(client: TestClient) -> None:
     assert body["raw_text"]
     assert "Buddy" in (body["raw_text"] or "")
     assert body["structured_data"]["pet"]["name"] == "Buddy"
-    assert body["structured_data"]["clinical"]["diagnosis"] == "Otitis externa"
+    assert body["structured_data"]["clinical"]["history"]
+    assert "Otitis" in body["structured_data"]["clinical"]["history"]
 
     record_id = body["id"]
     listed = client.get("/api/records")

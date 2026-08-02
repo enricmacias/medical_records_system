@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CLINICAL_RESUME_MAX,
   CLINICAL_SUMMARY_MAX,
   buildClinicalResume,
   buildStructuredPetPayload,
   displaySpecies,
-  formatMedicationsList,
   isStructuredRecordDirty,
   normalizeSpeciesForStorage,
-  parseMedicationsList,
 } from './recordDisplay'
 
 describe('species normalization', () => {
@@ -51,23 +48,11 @@ describe('buildStructuredPetPayload', () => {
 })
 
 describe('buildClinicalResume', () => {
-  it('prefers clinical.history when present', () => {
+  it('returns clinical.history when present', () => {
     const resume = buildClinicalResume({
       history: 'Overall case summary',
-      history_entries: [{ date: '01/01/20', summary: 'Visit note' }],
     })
     expect(resume).toBe('Overall case summary')
-  })
-
-  it('builds a resume from visit history entries', () => {
-    const resume = buildClinicalResume({
-      history_entries: [
-        { date: '08/12/19', summary: 'Emergency visit' },
-        { date: '08/04/20', summary: 'Giardia positive' },
-      ],
-    })
-    expect(resume).toContain('08/12/19 — Emergency visit')
-    expect(resume).toContain('08/04/20 — Giardia positive')
   })
 
   it('preserves paragraph breaks from stored clinical.history', () => {
@@ -83,31 +68,8 @@ describe('buildClinicalResume', () => {
     expect(resume).toHaveLength(CLINICAL_SUMMARY_MAX)
   })
 
-  it('falls back to diagnosis fields when there are no entries', () => {
-    const resume = buildClinicalResume({
-      diagnosis: 'Otitis',
-      chief_complaint: 'Ear scratching',
-      treatment: 'Drops',
-    })
-    expect(resume).toBe('Otitis. Ear scratching. Drops')
-  })
-})
-
-describe('medications list helpers', () => {
-  it('formats medications as one line each', () => {
-    const text = formatMedicationsList([
-      { name: 'Fortiflora', dosage: '1 sachet', frequency: 'daily' },
-      { name: 'Tobradex', dosage: null, frequency: null },
-    ])
-    expect(text).toBe('Fortiflora (1 sachet, daily)\nTobradex')
-  })
-
-  it('parses medication lines back into objects', () => {
-    const meds = parseMedicationsList('Fortiflora (1 sachet, daily)\nTobradex\n')
-    expect(meds).toEqual([
-      { name: 'Fortiflora', dosage: '1 sachet', frequency: 'daily' },
-      { name: 'Tobradex', dosage: null, frequency: null },
-    ])
+  it('returns empty string when history is absent', () => {
+    expect(buildClinicalResume({})).toBe('')
   })
 })
 
@@ -125,14 +87,7 @@ describe('isStructuredRecordDirty', () => {
   }
 
   it('is false when all tracked fields match the baseline', () => {
-    expect(
-      isStructuredRecordDirty({
-        data: structuredClone(seed),
-        seed,
-        medicationsText: 'Fortiflora',
-        baselineMedications: 'Fortiflora',
-      }),
-    ).toBe(false)
+    expect(isStructuredRecordDirty({ data: structuredClone(seed), seed })).toBe(false)
   })
 
   it('is true when a pet field changes', () => {
@@ -140,8 +95,6 @@ describe('isStructuredRecordDirty', () => {
       isStructuredRecordDirty({
         data: { ...seed, pet: { ...seed.pet, name: 'Buddy' } },
         seed,
-        medicationsText: '',
-        baselineMedications: '',
       }),
     ).toBe(true)
   })
@@ -149,13 +102,6 @@ describe('isStructuredRecordDirty', () => {
   it('is false when only clinical.history changes (summary is not editable)', () => {
     const data = structuredClone(seed)
     data.clinical = { history: 'A different summary from extraction.' }
-    expect(
-      isStructuredRecordDirty({
-        data,
-        seed,
-        medicationsText: '',
-        baselineMedications: '',
-      }),
-    ).toBe(false)
+    expect(isStructuredRecordDirty({ data, seed })).toBe(false)
   })
 })

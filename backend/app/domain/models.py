@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def utcnow() -> datetime:
@@ -54,67 +54,12 @@ class OwnerInfo(BaseModel):
     )
 
 
-class VisitInfo(BaseModel):
-    date: str | None = Field(
-        default=None,
-        description="Most recent visit date found in the document.",
-    )
-    clinic_name: str | None = Field(
-        default=None,
-        description="Clinic/centre name or brand if present (e.g. Parque Oeste, Kivet).",
-    )
-    veterinarian: str | None = Field(
-        default=None, description="Veterinarian name if explicitly stated."
-    )
-
-
-class Medication(BaseModel):
-    name: str | None = Field(default=None, description="Medication or product name.")
-    dosage: str | None = Field(default=None, description="Dose amount if stated.")
-    frequency: str | None = Field(
-        default=None, description="Frequency / duration if stated."
-    )
-
-
-class HistoryEntry(BaseModel):
-    date: str | None = Field(default=None, description="Visit date for this entry.")
-    summary: str | None = Field(
-        default=None,
-        description="Short factual summary of what happened on that visit.",
-    )
-
-
 class ClinicalInfo(BaseModel):
-    chief_complaint: str | None = Field(
-        default=None,
-        description="Main reason for the most recent or dominant consultation.",
-    )
+    model_config = ConfigDict(extra="ignore")
+
     history: str | None = Field(
         default=None,
-        description="Concise overall clinical history narrative (not every visit).",
-    )
-    examination: str | None = Field(
-        default=None,
-        description="Key examination findings (latest and clinically important).",
-    )
-    diagnosis: str | None = Field(
-        default=None,
-        description="Main diagnoses / conditions mentioned (comma-separated if several).",
-    )
-    treatment: str | None = Field(
-        default=None,
-        description="Key treatments / plans, especially recent or ongoing.",
-    )
-    medications: list[Medication] = Field(
-        default_factory=list,
-        description="Important medications from recent visits (max ~8).",
-    )
-    history_entries: list[HistoryEntry] = Field(
-        default_factory=list,
-        description="Up to 12 dated visit highlights from a multi-visit history.",
-    )
-    notes: str | None = Field(
-        default=None, description="Other relevant notes for the clinician."
+        description="Clinical summary — readable prose generated at extraction (max 2000 chars).",
     )
 
 
@@ -134,9 +79,10 @@ class MetaInfo(BaseModel):
 
 
 class MedicalRecord(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     pet: PetInfo = Field(default_factory=PetInfo)
     owner: OwnerInfo = Field(default_factory=OwnerInfo)
-    visit: VisitInfo = Field(default_factory=VisitInfo)
     clinical: ClinicalInfo = Field(default_factory=ClinicalInfo)
     meta: MetaInfo = Field(default_factory=MetaInfo)
 

@@ -20,7 +20,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 2. **Adapter interfaces** — PDF and LLM can be swapped without API changes.
 3. **Hybrid extraction** — heuristics first (inline compound demographics, label-free species/breed, visit blocks); optional LLM for weak clinical hints (narrative) and/or summary polish; heuristic clinical summary always generated; timeout falls back to heuristics; species normalized to Dog/Cat when inferable.
 4. **Async by default** — upload returns `processing`; UI polls until `completed`/`failed`.
-5. **Human-in-the-loop** — structured output is editable (pet, owner, medications); clinical summary is read-only and extraction-generated in v1.
+5. **Human-in-the-loop** — pet (six demographic fields) and owner are editable; clinical summary and meta are read-only in v1.
 6. **Fake LLM** — tests and demos work without GPU/model download.
 
 ## Assumptions

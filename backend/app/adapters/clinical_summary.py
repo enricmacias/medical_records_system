@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.domain.models import ClinicalInfo, MedicalRecord, Medication
+from app.domain.extraction_models import ExtractionClinicalInfo, ExtractionRecord, Medication
 
 CLINICAL_SUMMARY_MAX = 2000
 
@@ -35,7 +35,7 @@ _WEIGHT_RE = re.compile(r"\b(?:peso|weight)\s*[:\s]*[\d.,]+\s*kg\b", re.IGNORECA
 _CHIP_RE = re.compile(r"\b\d{9,15}\b")
 
 
-def _is_spanish(record: MedicalRecord) -> bool:
+def _is_spanish(record: ExtractionRecord) -> bool:
     lang = (record.meta.source_language or "").lower()
     return lang.startswith("es")
 
@@ -56,7 +56,7 @@ def _sanitize_summary_fragment(text: str, medication_names: list[str]) -> str:
 
 
 def _chief_complaint_for_summary(
-    clinical: ClinicalInfo, medication_names: list[str]
+    clinical: ExtractionClinicalInfo, medication_names: list[str]
 ) -> str | None:
     chief = (clinical.chief_complaint or "").strip()
     if not chief:
@@ -176,7 +176,7 @@ def _format_medications_paragraph(
     return _ensure_sentence(f"Relevant medications include {body}{extra}")
 
 
-def has_clinical_content(record: MedicalRecord, hints: dict[str, Any]) -> bool:
+def has_clinical_content(record: ExtractionRecord, hints: dict[str, Any]) -> bool:
     clinical = record.clinical
     if (
         clinical.diagnosis
@@ -196,7 +196,7 @@ def has_clinical_content(record: MedicalRecord, hints: dict[str, Any]) -> bool:
     )
 
 
-def clinical_facts_payload(record: MedicalRecord) -> dict[str, Any]:
+def clinical_facts_payload(record: ExtractionRecord) -> dict[str, Any]:
     clinical = record.clinical
     notes = clinical.notes
     if _is_generic_note(notes):
@@ -218,7 +218,7 @@ def clinical_facts_payload(record: MedicalRecord) -> dict[str, Any]:
     }
 
 
-def build_heuristic_clinical_summary(record: MedicalRecord) -> str:
+def build_heuristic_clinical_summary(record: ExtractionRecord) -> str:
     """Readable fallback summary from structured clinical fields (not pet/owner)."""
     clinical = record.clinical
     spanish = _is_spanish(record)
@@ -339,7 +339,7 @@ def summary_polish_user_prompt(
     baseline: str,
     hints: dict[str, Any],
     body: str,
-    record: MedicalRecord,
+    record: ExtractionRecord,
     max_source_chars: int = 6000,
 ) -> str:
     from app.adapters.text_hints import clinical_focus_text
@@ -364,9 +364,9 @@ def summary_polish_user_prompt(
     )
 
 
-def finalize_clinical_summary(record: MedicalRecord) -> MedicalRecord:
+def finalize_clinical_summary(record: ExtractionRecord) -> ExtractionRecord:
     """Set clinical.history from structured clinical content (extraction / re-process only)."""
     summary = build_heuristic_clinical_summary(record)
     data = record.model_dump()
     data["clinical"]["history"] = summary or None
-    return MedicalRecord.model_validate(data)
+    return ExtractionRecord.model_validate(data)

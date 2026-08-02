@@ -26,16 +26,15 @@ from app.adapters.text_hints import (
     infer_species_from_text,
     split_for_long_document,
 )
-from app.domain.models import (
-    ClinicalInfo,
+from app.domain.extraction_models import (
+    ExtractionClinicalInfo,
+    ExtractionRecord,
     HistoryEntry,
-    MedicalRecord,
     Medication,
-    MetaInfo,
-    OwnerInfo,
-    PetInfo,
     VisitInfo,
+    to_persisted_record,
 )
+from app.domain.models import MedicalRecord, MetaInfo, OwnerInfo, PetInfo
 
 
 SYSTEM_PROMPT = """You are a veterinary medical-record extraction engine.
@@ -193,7 +192,7 @@ class OllamaStructurer(MedicalRecordStructurer):
                         "LLM narrative skipped (timeout or error)."
                     )
 
-        record = MedicalRecord(
+        record = ExtractionRecord(
             pet=demographics.pet,
             owner=demographics.owner,
             visit=demographics.visit,
@@ -201,7 +200,7 @@ class OllamaStructurer(MedicalRecordStructurer):
             meta=demographics.meta,
         )
         record = self._apply_fallbacks(record, hints)
-        return self._finalize_clinical_summary(record, hints, body)
+        return to_persisted_record(self._finalize_clinical_summary(record, hints, body))
 
     def _should_call_clinical_llm(self, hints: dict[str, Any]) -> bool:
         mode = (self.clinical_mode or "hybrid").lower()
@@ -222,7 +221,7 @@ class OllamaStructurer(MedicalRecordStructurer):
         )
 
     @staticmethod
-    def _clinical_from_hints(hints: dict[str, Any]) -> ClinicalInfo:
+    def _clinical_from_hints(hints: dict[str, Any]) -> ExtractionClinicalInfo:
         entries = hints.get("visit_blocks") or []
         diagnoses = hints.get("diagnosis_hints") or []
         meds = hints.get("medication_hints") or []
@@ -230,7 +229,7 @@ class OllamaStructurer(MedicalRecordStructurer):
         chief = None
         if entries:
             chief = entries[-1].get("summary")
-        return ClinicalInfo(
+        return ExtractionClinicalInfo(
             chief_complaint=chief,
             history=history,
             diagnosis="; ".join(diagnoses) if diagnoses else None,
@@ -242,8 +241,8 @@ class OllamaStructurer(MedicalRecordStructurer):
 
     @staticmethod
     def _merge_narrative(
-        clinical: ClinicalInfo, narrative: ClinicalNarrative
-    ) -> ClinicalInfo:
+        clinical: ExtractionClinicalInfo, narrative: ClinicalNarrative
+    ) -> ExtractionClinicalInfo:
         data = clinical.model_dump()
         for field in (
             "chief_complaint",
@@ -255,7 +254,7 @@ class OllamaStructurer(MedicalRecordStructurer):
             value = getattr(narrative, field)
             if value:
                 data[field] = value
-        return ClinicalInfo.model_validate(data)
+        return ExtractionClinicalInfo.model_validate(data)
 
     def _clinical_user_prompt(self, hints: dict[str, Any], body: str) -> str:
         recent = (hints.get("visit_blocks") or [])[-4:]
@@ -343,7 +342,7 @@ class OllamaStructurer(MedicalRecordStructurer):
         return model_cls.model_validate_json(content)
 
     @staticmethod
-    def _apply_fallbacks(record: MedicalRecord, hints: dict[str, Any]) -> MedicalRecord:
+    def _apply_fallbacks(record: ExtractionRecord, hints: dict[str, Any]) -> ExtractionRecord:
         likely = hints.get("likely_fields") or {}
         data = record.model_dump()
 
@@ -404,7 +403,6 @@ class OllamaStructurer(MedicalRecordStructurer):
             "pet.name",
             "pet.species",
             "owner.name",
-            "clinical.diagnosis",
         ):
             section, field = path.split(".")
             if not data[section].get(field):
@@ -417,7 +415,7 @@ class OllamaStructurer(MedicalRecordStructurer):
         if species:
             data["pet"]["species"] = species
 
-        return MedicalRecord.model_validate(data)
+        return ExtractionRecord.model_validate(data)
 
     def _should_polish_clinical_summary(self, hints: dict[str, Any]) -> bool:
         mode = (self.clinical_mode or "hybrid").lower()
@@ -429,10 +427,10 @@ class OllamaStructurer(MedicalRecordStructurer):
 
     def _finalize_clinical_summary(
         self,
-        record: MedicalRecord,
+        record: ExtractionRecord,
         hints: dict[str, Any],
         body: str,
-    ) -> MedicalRecord:
+    ) -> ExtractionRecord:
         baseline_record = finalize_clinical_summary(record)
         if not self._should_polish_clinical_summary(hints):
             return baseline_record
@@ -452,7 +450,7 @@ class OllamaStructurer(MedicalRecordStructurer):
                 data["clinical"]["history"] = truncate_clinical_summary(
                     polished.summary.strip()
                 )
-                return MedicalRecord.model_validate(data)
+                return ExtractionRecord.model_validate(data)
         except Exception:
             pass
         return baseline_record
@@ -485,8 +483,9 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                     "summary": "Conjuntivitis folicular; provocación con pienso.",
                 },
             ]
-            return finalize_clinical_summary(
-                MedicalRecord(
+            return to_persisted_record(
+                finalize_clinical_summary(
+                    ExtractionRecord(
                 pet=PetInfo(
                     name=likely.get("pet.name") or "MARLEY",
                     species=normalize_species_dog_cat(likely.get("pet.species")) or "Dog",
@@ -503,7 +502,7 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                     date=(hints.get("visit_dates_found") or ["03/10/20"])[-1],
                     clinic_name=likely.get("visit.clinic_name") or "Parque Oeste",
                 ),
-                clinical=ClinicalInfo(
+                clinical=ExtractionClinicalInfo(
                     chief_complaint=entries[-1]["summary"] if entries else None,
                     examination="Exploración variable según visita; heces y ojos frecuentes focos de atención.",
                     diagnosis="; ".join(hints.get("diagnosis_hints") or ["Giardiasis", "Conjuntivitis"]),
@@ -536,6 +535,7 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                 ),
                 ),
             )
+            )
 
         diagnosis = None
         if "otitis" in lower:
@@ -543,8 +543,9 @@ class FakeLLMStructurer(MedicalRecordStructurer):
         elif "vaccination" in lower or "vacuna" in lower:
             diagnosis = "Routine vaccination"
 
-        return finalize_clinical_summary(
-            MedicalRecord(
+        return to_persisted_record(
+            finalize_clinical_summary(
+                ExtractionRecord(
             pet=PetInfo(
                 name="Buddy"
                 if "buddy" in lower
@@ -584,7 +585,7 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                 else likely.get("visit.clinic_name"),
                 veterinarian="Dr. Smith" if "dr. smith" in lower else None,
             ),
-            clinical=ClinicalInfo(
+            clinical=ExtractionClinicalInfo(
                 chief_complaint="Left ear scratching and head shaking"
                 if "ear" in lower
                 else ("Symptoms for 3 days" if "3 days" in lower else None),
@@ -613,6 +614,7 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                 missing_fields=[],
             ),
             ),
+        )
         )
 
 
