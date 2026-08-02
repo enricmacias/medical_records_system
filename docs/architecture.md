@@ -6,7 +6,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 
 | Concern | Choice |
 |---|---|
-| Frontend | React + Vite (polls while processing; progressive section loading + progress feedback) |
+| Frontend | React + Vite (polls while processing; progressive section loading + progress feedback; **EN/ES site language toggle**) |
 | Backend | FastAPI + in-process background tasks |
 | PDF text | pdfplumber |
 | Structuring | Heuristics ± Ollama structured outputs (`qwen2.5:7b`); FakeLLM for tests |
@@ -20,7 +20,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 2. **Adapter interfaces** — PDF and LLM can be swapped without API changes.
 3. **Hybrid extraction** — heuristics first (inline compound demographics, label-free species/breed, visit blocks); optional LLM for weak clinical hints (narrative) and/or summary polish; heuristic clinical summary always generated; timeout falls back to heuristics; species normalized to Dog/Cat when inferable.
 4. **Async by default** — upload returns `processing`; UI polls until `completed`/`failed`; partial pet/owner/meta and `processing` percent/messages appear before clinical summary completes.
-5. **Human-in-the-loop** — pet (six demographic fields) and owner are editable; clinical summary and meta are read-only in v1.
+5. **Human-in-the-loop** — pet (six demographic fields) and owner are editable; clinical summary and meta are read-only in v1. Site UI in English or Spanish (toggle); document language separate (`meta.source_language`).
 6. **Fake LLM** — tests and demos work without GPU/model download.
 
 ## Assumptions
@@ -29,7 +29,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 - Single user, no auth
 - Ollama is optional for many multi-visit historiales under `hybrid`/`heuristic` (heuristic clinical summary always produced); polish and narrative LLM require Ollama or use `llm` mode for weak-hint documents
 - Ollama, when used from Docker, is typically reached via `host.docker.internal` (Mac/Windows) or documented host networking on Linux
-- Multilingual support is intentional (Spanish clinic headers and historiales are first-class); other languages best-effort via the LLM when invoked
+- Multilingual **PDF extraction** is intentional (Spanish clinic headers and historiales are first-class); other languages best-effort via the LLM when invoked. **Site UI** localization is English/Spanish only (see `specs/data-model.md` UI localization).
 
 ## Failure policy
 

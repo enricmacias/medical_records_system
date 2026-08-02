@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fileUrl, getRecord, updateRecord } from '../api'
+import LanguageSuggestionBanner from '../components/LanguageSuggestionBanner'
 import RecordForm, { STRUCTURED_FORM_ID } from '../components/RecordForm'
+import { useLanguage, translateProcessingStep } from '../i18n/LanguageContext'
+import { translateStatus } from '../lib/displayValues'
 
 export default function RecordPage() {
   const { id } = useParams()
+  const { t } = useLanguage()
   const [record, setRecord] = useState(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -74,7 +78,7 @@ export default function RecordPage() {
       setEditing(false)
       setDirty(false)
       setFormKey((k) => k + 1)
-      setSaveNotice('Changes saved successfully.')
+      setSaveNotice(t('record.saveSuccess'))
     } catch (err) {
       setError(err.message)
     } finally {
@@ -103,33 +107,39 @@ export default function RecordPage() {
     return (
       <section className="panel">
         <p className="error">{error}</p>
-        <Link to="/">Back</Link>
+        <Link to="/">{t('record.back')}</Link>
       </section>
     )
   }
 
   if (!record) {
-    return <p className="muted">Loading record…</p>
+    return <p className="muted">{t('record.loading')}</p>
   }
 
   const isProcessing = record.status === 'processing'
-  const processingMessage = record.processing?.message
+  const processingStepMessage = record.processing
+    ? translateProcessingStep(t, record.processing)
+    : null
   const hasStructuredData = Boolean(record.structured_data)
+  const sourceLanguage = record.structured_data?.meta?.source_language
 
   return (
     <section className="stack">
+      <LanguageSuggestionBanner sourceLanguage={sourceLanguage} recordId={record.id} />
+
       <div className="panel heading-row">
         <div>
-          <Link to="/" className="back-link">
-            ← All records
-          </Link>
+          <Link to="/" className="back-link">{t('record.allRecords')}</Link>
           <h1>{record.structured_data?.pet?.name || record.original_filename}</h1>
           <p className="muted">
-            Status: {record.status}
+            {t('record.status', { status: translateStatus(t, record.status) })}
             {isProcessing
               ? record.processing
-                ? ` — ${record.processing.percent}% · ${record.processing.message}`
-                : ' — extracting and structuring with the local LLM…'
+                ? ` — ${t('record.statusProcessing', {
+                    percent: record.processing.percent,
+                    message: processingStepMessage,
+                  })}`
+                : ` — ${t('record.statusProcessingFallback')}`
               : ''}
             {record.error_message ? ` — ${record.error_message}` : ''}
           </p>
@@ -140,25 +150,22 @@ export default function RecordPage() {
             className="ghost-button"
             onClick={() => setShowExtractedText((open) => !open)}
           >
-            {showExtractedText ? 'Hide extracted text' : 'Extracted text'}
+            {showExtractedText ? t('record.hideExtractedText') : t('record.extractedText')}
           </button>
           <a className="ghost-button" href={fileUrl(record.id)} target="_blank" rel="noreferrer">
-            Download PDF
+            {t('record.downloadPdf')}
           </a>
         </div>
       </div>
 
       {isProcessing && !hasStructuredData && record.processing && (
         <div className="panel">
-          <h2>Processing your document</h2>
-          <p className="muted">
-            Sections appear as soon as they are ready. The clinical summary is usually the
-            slowest step on a local model.
-          </p>
+          <h2>{t('record.processingTitle')}</h2>
+          <p className="muted">{t('record.processingHint')}</p>
           <div className="processing-progress" role="status" aria-live="polite">
             <div className="processing-progress-header">
               <span className="processing-progress-percent">{record.processing.percent}%</span>
-              <span className="processing-progress-step">{record.processing.message}</span>
+              <span className="processing-progress-step">{processingStepMessage}</span>
             </div>
             <div className="processing-progress-bar" aria-hidden="true">
               <div
@@ -173,18 +180,20 @@ export default function RecordPage() {
       {isProcessing && hasStructuredData && (
         <div className="panel processing-partial-notice" role="status">
           <p className="muted">
-            Pet and owner details are ready.
-            {processingMessage ? ` ${processingMessage}` : ' Clinical summary still in progress…'}
+            {t('record.partialReady')}
+            {processingStepMessage
+              ? ` ${processingStepMessage}`
+              : ` ${t('record.summaryInProgress')}`}
           </p>
         </div>
       )}
 
       {showExtractedText && (
         <div className="panel">
-          <h2>Extracted text</h2>
+          <h2>{t('record.extractedTextTitle')}</h2>
           <pre className="text-preview">
             {record.raw_text ||
-              (isProcessing ? 'Waiting for text extraction…' : 'No text extracted.')}
+              (isProcessing ? t('record.waitingForText') : t('record.noTextExtracted'))}
           </pre>
         </div>
       )}
@@ -192,7 +201,7 @@ export default function RecordPage() {
       <div className="panel">
         <div className="heading-row">
           <div className="heading-with-actions">
-            <h2>Structured record</h2>
+            <h2>{t('record.structuredRecord')}</h2>
             {record.structured_data && (
               <div className="heading-actions">
                 {editing && (
@@ -202,7 +211,7 @@ export default function RecordPage() {
                     className="primary-button heading-action-button"
                     disabled={saving}
                   >
-                    {saving ? 'Saving…' : 'Save corrections'}
+                    {saving ? t('record.saving') : t('record.saveCorrections')}
                   </button>
                 )}
                 <button
@@ -211,7 +220,7 @@ export default function RecordPage() {
                   onClick={toggleEditing}
                   disabled={isProcessing}
                 >
-                  {editing ? 'Cancel' : 'Edit'}
+                  {editing ? t('record.cancel') : t('record.edit')}
                 </button>
               </div>
             )}
@@ -219,9 +228,7 @@ export default function RecordPage() {
         </div>
 
         {saveNotice && (
-          <div className="toast-success" role="status">
-            {saveNotice}
-          </div>
+          <div className="toast-success" role="status">{saveNotice}</div>
         )}
 
         {record.structured_data ? (
@@ -236,9 +243,7 @@ export default function RecordPage() {
           />
         ) : (
           <p className="muted">
-            {isProcessing
-              ? 'Structured fields will appear shortly as each section is ready.'
-              : 'No structured data available.'}
+            {isProcessing ? t('record.structuredSoon') : t('record.noStructuredData')}
           </p>
         )}
         {error && <p className="error">{error}</p>}
@@ -257,20 +262,22 @@ export default function RecordPage() {
             aria-describedby="discard-desc"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="discard-title">Unsaved changes</h3>
-            <p id="discard-desc">
-              Modified fields will not be saved. Do you want to continue without saving?
-            </p>
+            <h3 id="discard-title">{t('record.unsavedTitle')}</h3>
+            <p id="discard-desc">{t('record.unsavedDesc')}</p>
             <div className="modal-actions">
               <button
                 type="button"
                 className="ghost-button"
                 onClick={() => setDiscardOpen(false)}
               >
-                Cancel
+                {t('record.cancel')}
               </button>
-              <button type="button" className="primary-button heading-action-button" onClick={exitEditing}>
-                Continue
+              <button
+                type="button"
+                className="primary-button heading-action-button"
+                onClick={exitEditing}
+              >
+                {t('record.continue')}
               </button>
             </div>
           </div>

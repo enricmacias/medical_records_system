@@ -2,24 +2,34 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   buildClinicalResume,
   buildStructuredPetPayload,
-  displaySpecies,
   isStructuredRecordDirty,
   normalizeSpeciesForStorage,
 } from '../lib/recordDisplay'
+import {
+  displayRecordDate,
+  displaySex,
+  displaySpeciesLocalized,
+  translateConfidence,
+  translateFieldPath,
+} from '../lib/displayValues'
+import { formatDatesInText } from '../lib/formatDate'
+import { useLanguage, translateProcessingStep } from '../i18n/LanguageContext'
 
 export const STRUCTURED_FORM_ID = 'structured-record-form'
 
-function displayValue(value) {
-  if (value == null || String(value).trim() === '') return '—'
+function displayValue(value, t) {
+  if (value == null || String(value).trim() === '') return t('form.empty')
   return value
 }
 
-function Field({ label, value, onChange, editing }) {
+function Field({ label, value, displayValue: formatted, onChange, editing }) {
+  const { t } = useLanguage()
+  const shown = formatted ?? value
   if (!editing) {
     return (
       <div className="field field-readonly">
         <span>{label}</span>
-        <p className="field-value">{displayValue(value)}</p>
+        <p className="field-value">{displayValue(shown, t)}</p>
       </div>
     )
   }
@@ -32,11 +42,12 @@ function Field({ label, value, onChange, editing }) {
 }
 
 function TextArea({ label, value, onChange, rows = 3, hint, editing }) {
+  const { t } = useLanguage()
   if (!editing) {
     return (
       <div className="field field-readonly">
         <span>{label}</span>
-        <p className="field-value field-value-block">{displayValue(value)}</p>
+        <p className="field-value field-value-block">{displayValue(value, t)}</p>
       </div>
     )
   }
@@ -50,12 +61,14 @@ function TextArea({ label, value, onChange, rows = 3, hint, editing }) {
 }
 
 function ProcessingIndicator({ processing }) {
+  const { t } = useLanguage()
   if (!processing) return null
+  const message = translateProcessingStep(t, processing)
   return (
     <div className="processing-progress" role="status" aria-live="polite">
       <div className="processing-progress-header">
         <span className="processing-progress-percent">{processing.percent}%</span>
-        <span className="processing-progress-step">{processing.message}</span>
+        <span className="processing-progress-step">{message}</span>
       </div>
       <div className="processing-progress-bar" aria-hidden="true">
         <div
@@ -68,22 +81,23 @@ function ProcessingIndicator({ processing }) {
 }
 
 function SpeciesField({ value, onChange, editing }) {
+  const { t } = useLanguage()
   if (!editing) {
     return (
       <div className="field field-readonly">
-        <span>Species</span>
-        <p className="field-value">{displaySpecies(value)}</p>
+        <span>{t('form.species')}</span>
+        <p className="field-value">{displayValue(displaySpeciesLocalized(value, null, t), t)}</p>
       </div>
     )
   }
   const selectValue = normalizeSpeciesForStorage(value) ?? ''
   return (
     <label className="field">
-      <span>Species</span>
+      <span>{t('form.species')}</span>
       <select value={selectValue} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">—</option>
-        <option value="Dog">Dog</option>
-        <option value="Cat">Cat</option>
+        <option value="">{t('form.empty')}</option>
+        <option value="Dog">{t('species.dog')}</option>
+        <option value="Cat">{t('species.cat')}</option>
       </select>
     </label>
   )
@@ -105,6 +119,8 @@ export default function RecordForm({
   isProcessing = false,
   processing = null,
 }) {
+  const { locale, t } = useLanguage()
+
   const seed = useMemo(() => {
     const clone = structuredClone(initial)
     clone.pet = normalizePetForForm(clone.pet || {})
@@ -114,7 +130,10 @@ export default function RecordForm({
     return clone
   }, [initial])
 
-  const clinicalSummary = useMemo(() => buildClinicalResume(seed.clinical), [seed])
+  const clinicalSummary = useMemo(() => {
+    const raw = buildClinicalResume(seed.clinical)
+    return raw ? formatDatesInText(raw, locale) : ''
+  }, [seed, locale])
 
   const [data, setData] = useState(seed)
 
@@ -151,6 +170,10 @@ export default function RecordForm({
     })
   }
 
+  const missingFields = (data.meta?.missing_fields || [])
+    .map((path) => translateFieldPath(path, locale))
+    .join(', ')
+
   return (
     <form
       id={STRUCTURED_FORM_ID}
@@ -158,10 +181,10 @@ export default function RecordForm({
       onSubmit={handleSave}
     >
       <fieldset disabled={!editing}>
-        <legend>Pet</legend>
+        <legend>{t('form.pet')}</legend>
         <div className="grid">
           <Field
-            label="Name"
+            label={t('form.name')}
             value={data.pet?.name}
             onChange={(v) => setPet('name', v)}
             editing={editing}
@@ -172,25 +195,27 @@ export default function RecordForm({
             editing={editing}
           />
           <Field
-            label="Breed"
+            label={t('form.breed')}
             value={data.pet?.breed}
             onChange={(v) => setPet('breed', v)}
             editing={editing}
           />
           <Field
-            label="Sex"
+            label={t('form.sex')}
             value={data.pet?.sex}
+            displayValue={displaySex(data.pet?.sex, locale, t)}
             onChange={(v) => setPet('sex', v)}
             editing={editing}
           />
           <Field
-            label="Date of birth"
+            label={t('form.dateOfBirth')}
             value={data.pet?.date_of_birth}
+            displayValue={displayRecordDate(data.pet?.date_of_birth, locale)}
             onChange={(v) => setPet('date_of_birth', v)}
             editing={editing}
           />
           <Field
-            label="Microchip"
+            label={t('form.microchip')}
             value={data.pet?.microchip}
             onChange={(v) => setPet('microchip', v)}
             editing={editing}
@@ -199,29 +224,29 @@ export default function RecordForm({
       </fieldset>
 
       <fieldset disabled={!editing}>
-        <legend>Owner</legend>
+        <legend>{t('form.owner')}</legend>
         <div className="grid">
           <Field
-            label="Name"
+            label={t('form.name')}
             value={data.owner?.name}
             onChange={(v) => setOwner('name', v)}
             editing={editing}
           />
           <Field
-            label="Phone"
+            label={t('form.phone')}
             value={data.owner?.phone}
             onChange={(v) => setOwner('phone', v)}
             editing={editing}
           />
           <Field
-            label="Email"
+            label={t('form.email')}
             value={data.owner?.email}
             onChange={(v) => setOwner('email', v)}
             editing={editing}
           />
         </div>
         <TextArea
-          label="Address"
+          label={t('form.address')}
           value={data.owner?.address}
           onChange={(v) => setOwner('address', v)}
           rows={2}
@@ -230,33 +255,38 @@ export default function RecordForm({
       </fieldset>
 
       <fieldset>
-        <legend>Clinical summary</legend>
+        <legend>{t('form.clinicalSummary')}</legend>
         {isProcessing && !clinicalSummary ? (
           processing ? (
             <ProcessingIndicator processing={processing} />
           ) : (
-            <p className="muted">Generating clinical summary…</p>
+            <p className="muted">{t('form.generatingSummary')}</p>
           )
         ) : (
           <TextArea
-            label="Clinical summary"
+            label={t('form.clinicalSummary')}
             value={clinicalSummary}
             onChange={() => {}}
             rows={8}
-            hint="Auto-generated on upload; not editable."
+            hint={t('form.summaryHint')}
             editing={false}
           />
         )}
       </fieldset>
 
       <fieldset>
-        <legend>Meta</legend>
+        <legend>{t('form.meta')}</legend>
         <p className="muted">
-          Confidence: {data.meta?.extraction_confidence || 'n/a'} · Language:{' '}
-          {data.meta?.source_language || 'n/a'}
+          {t('form.confidence', {
+            value: translateConfidence(t, data.meta?.extraction_confidence) || t('form.n_a'),
+          })}
+          {' · '}
+          {t('form.language', {
+            value: data.meta?.source_language || t('form.n_a'),
+          })}
         </p>
         {(data.meta?.missing_fields || []).length > 0 && (
-          <p className="muted">Missing: {data.meta.missing_fields.join(', ')}</p>
+          <p className="muted">{t('form.missing', { fields: missingFields })}</p>
         )}
       </fieldset>
     </form>

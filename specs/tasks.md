@@ -120,3 +120,13 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] UI: sections render as ready; clinical summary progress bar + messages; Edit disabled while processing
 - [x] `tests/test_progressive_processing.py`; frontend RecordForm/RecordPage progressive-loading tests
 - [x] Align specs (api, data-model, architecture, acceptance, scope, tasks, docs)
+
+## T16 — Site UI localization EN/ES (done)
+
+- [x] Header language toggle (English / Español); `localStorage` preference; default from browser locale
+- [x] Localized UI chrome, labels, status (record detail), processing steps (from `processing.step`), species/sex display, confidence and missing-field labels
+- [x] Date display: month name + full year in site language (DOB and dates in clinical summary); raw values on save/edit
+- [x] Do not translate: pet name, microchip, owner name; clinical summary prose stays in document language
+- [x] Language suggestion banner when `meta.source_language` (`en`/`es`) differs from site language
+- [x] Frontend i18n (`frontend/src/i18n/`), `formatDate`, `displayValues`; Vitest coverage
+- [x] Align specs (data-model, acceptance, architecture, api, scope, tasks, docs, README)

@@ -98,6 +98,7 @@ Architecture notes and ADRs: [`docs/`](./docs/).
 ## Performance notes
 
 - Default `PROCESSING_MODE=async` avoids gateway timeouts: upload returns immediately; the UI polls and shows progressive section loading with percent/step feedback until the clinical summary is ready.
+- Use the header **English / Español** toggle to change site UI language (labels, dates, processing messages). This does not change extracted data or clinical summary language; `meta.source_language` shows the document language.
 - Default `LLM_CLINICAL_MODE=hybrid`: for multi-visit PDFs with strong historial hints, **clinical narrative** LLM is skipped but **clinical summary polish** may still run when Ollama is available; heuristic clinical summary is always generated. Weak-hint documents may call narrative LLM instead of polish.
 - Demographics LLM is also skipped when header heuristics find `pet.name`.
 - `LLM_CLINICAL_MODE=heuristic`: fastest — no clinical LLM calls; heuristic clinical summary only.

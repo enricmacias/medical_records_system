@@ -45,7 +45,50 @@ a {
 }
 
 .app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
   margin-bottom: 1.75rem;
+}
+
+.app-header-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.language-toggle {
+  display: inline-flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.language-toggle-button {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.language-toggle-button.is-active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.language-suggestion {
+  border-color: rgba(15, 106, 92, 0.35);
+}
+
+.language-suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
 }
 
 .brand {

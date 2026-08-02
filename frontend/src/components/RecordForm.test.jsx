@@ -1,8 +1,8 @@
-import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import RecordForm, { STRUCTURED_FORM_ID } from './RecordForm'
+import { renderWithI18n } from '../test/renderWithI18n'
 
 const sampleRecord = {
   pet: {
@@ -31,7 +31,7 @@ const sampleRecord = {
 
 describe('RecordForm', () => {
   it('renders only pet, owner, clinical summary, and meta sections', () => {
-    render(
+    renderWithI18n(
       <RecordForm
         initial={sampleRecord}
         onSave={vi.fn()}
@@ -51,6 +51,86 @@ describe('RecordForm', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
+  it('formats date of birth with month name in the site language', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={sampleRecord}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+      { locale: 'en' },
+    )
+    expect(screen.getByText('October 4, 2019')).toBeInTheDocument()
+  })
+
+  it('shows Spanish labels when site language is Spanish', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={sampleRecord}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+      { locale: 'es' },
+    )
+    expect(screen.getByText('Mascota')).toBeInTheDocument()
+    expect(screen.getByText('Propietario')).toBeInTheDocument()
+    expect(screen.getByText('4 de octubre de 2019')).toBeInTheDocument()
+    expect(screen.getByText('Marley')).toBeInTheDocument()
+    expect(screen.getByText('Beatriz Abarca')).toBeInTheDocument()
+  })
+
+  it('localizes sex display in read-only mode', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={sampleRecord}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+      { locale: 'es' },
+    )
+    expect(screen.getByText('Macho')).toBeInTheDocument()
+  })
+
+  it('keeps raw sex value when saving in edit mode', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+
+    renderWithI18n(
+      <div>
+        <button type="submit" form={STRUCTURED_FORM_ID}>Save</button>
+        <RecordForm
+          initial={sampleRecord}
+          onSave={onSave}
+          editing={true}
+          onDirtyChange={vi.fn()}
+        />
+      </div>,
+      { locale: 'es' },
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave.mock.calls[0][0].pet.sex).toBe('M')
+  })
+
+  it('formats dates embedded in clinical summary for display', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          clinical: { history: 'Visit on 08/04/20.' },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+      { locale: 'en' },
+    )
+    expect(screen.getByText(/Visit on April 8, 2020/i)).toBeInTheDocument()
+  })
+
   it('displays multi-paragraph clinical summary with preserved line breaks', () => {
     const multiParagraph = {
       ...sampleRecord,
@@ -58,7 +138,7 @@ describe('RecordForm', () => {
         history: 'First paragraph about giardiasis.\n\nSecond paragraph about visits.',
       },
     }
-    render(
+    renderWithI18n(
       <RecordForm
         initial={multiParagraph}
         onSave={vi.fn()}
@@ -77,7 +157,7 @@ describe('RecordForm', () => {
     const user = userEvent.setup()
     const onDirtyChange = vi.fn()
 
-    render(
+    renderWithI18n(
       <RecordForm
         initial={sampleRecord}
         onSave={vi.fn()}
@@ -96,7 +176,7 @@ describe('RecordForm', () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
 
-    render(
+    renderWithI18n(
       <div>
         <button type="submit" form={STRUCTURED_FORM_ID}>
           Save corrections
@@ -129,7 +209,7 @@ describe('RecordForm', () => {
   })
 
   it('shows progress while clinical summary is still generating', () => {
-    render(
+    renderWithI18n(
       <RecordForm
         initial={{
           ...sampleRecord,
@@ -153,7 +233,7 @@ describe('RecordForm', () => {
   })
 
   it('shows a fallback message when processing without progress details', () => {
-    render(
+    renderWithI18n(
       <RecordForm
         initial={{
           ...sampleRecord,
@@ -175,7 +255,7 @@ describe('RecordForm', () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
 
-    render(
+    renderWithI18n(
       <div>
         <button type="submit" form={STRUCTURED_FORM_ID}>
           Save corrections

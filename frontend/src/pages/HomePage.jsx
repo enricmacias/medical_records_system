@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getHealth, listRecords, uploadRecord } from '../api'
+import { useLanguage } from '../i18n/LanguageContext'
+import { translateOllamaStatus } from '../lib/displayValues'
 
 export default function HomePage() {
   const navigate = useNavigate()
+  const { locale, t } = useLanguage()
   const [items, setItems] = useState([])
   const [health, setHealth] = useState(null)
   const [error, setError] = useState('')
@@ -39,11 +42,8 @@ export default function HomePage() {
   return (
     <section className="stack">
       <div className="panel">
-        <h1>Upload a veterinary PDF</h1>
-        <p className="muted">
-          Upload returns immediately. Text extraction and local LLM structuring
-          continue in the background — open the record to watch progress.
-        </p>
+        <h1>{t('home.uploadTitle')}</h1>
+        <p className="muted">{t('home.uploadHint')}</p>
         <label className="upload-button">
           <input
             type="file"
@@ -51,20 +51,24 @@ export default function HomePage() {
             onChange={onFileChange}
             disabled={uploading}
           />
-          {uploading ? 'Uploading…' : 'Choose PDF'}
+          {uploading ? t('home.uploading') : t('home.choosePdf')}
         </label>
         {health && (
           <p className="health">
-            API: {health.status} · LLM: {health.ollama} · model: {health.model}
+            {t('home.health', {
+              status: health.status,
+              ollama: translateOllamaStatus(t, health.ollama),
+              model: health.model,
+            })}
           </p>
         )}
         {error && <p className="error">{error}</p>}
       </div>
 
       <div className="panel">
-        <h2>Recent records</h2>
+        <h2>{t('home.recentRecords')}</h2>
         {items.length === 0 ? (
-          <p className="muted">No records yet. Upload a PDF to get started.</p>
+          <p className="muted">{t('home.noRecords')}</p>
         ) : (
           <ul className="record-list">
             {items.map((item) => (
@@ -72,7 +76,8 @@ export default function HomePage() {
                 <Link to={`/records/${item.id}`}>
                   <strong>{item.pet_name || item.original_filename}</strong>
                   <span>
-                    {item.status} · {new Date(item.created_at).toLocaleString()}
+                    {item.status} ·{' '}
+                    {new Date(item.created_at).toLocaleString(locale === 'es' ? 'es-ES' : 'en-US')}
                   </span>
                 </Link>
               </li>

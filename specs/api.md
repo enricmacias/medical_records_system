@@ -142,8 +142,8 @@ Surfaced on `RecordResponse.processing` while `status=processing` and progress h
 | Field | Description |
 |---|---|
 | `percent` | Integer 0–100; approximate completion for user feedback (not a strict time estimate). |
-| `step` | Machine step id (e.g. `starting`, `extracting_text`, `demographics`, `clinical_analysis`, `clinical_summary`, `clinical_summary_polish`, `completing`). |
-| `message` | Short user-facing description of the current step. |
+| `step` | Machine step id (e.g. `starting`, `extracting_text`, `demographics`, `clinical_analysis`, `clinical_summary`, `clinical_summary_polish`, `completing`). **v1 web UI localizes progress text from `step` and `percent`**, not from `message`. |
+| `message` | Short user-facing description of the current step (English from backend). API clients may display this directly; the v1 React UI maps `step` (+ `percent` ≥ 35 for `demographics`) to localized strings instead. |
 
 Typical stages (see `specs/architecture.md` for pipeline detail):
 
@@ -156,6 +156,8 @@ Typical stages (see `specs/architecture.md` for pipeline detail):
 | `clinical_summary` | 65 | Writing the clinical summary… |
 | `clinical_summary_polish` | 80 | Polishing the clinical summary with AI… |
 | `completing` | 95 | Saving your structured record… |
+
+**Client note (v1 UI):** Spanish equivalents exist for all `step` ids in frontend i18n. When `step` is `demographics` and `percent` ≥ 35, the UI shows the “pet and owner ready” message rather than the “extracting demographics” message.
 
 ### RecordResponse
 
