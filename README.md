@@ -98,10 +98,10 @@ Architecture notes and ADRs: [`docs/`](./docs/).
 ## Performance notes
 
 - Default `PROCESSING_MODE=async` avoids gateway timeouts: upload returns immediately and the UI polls.
-- Default `LLM_CLINICAL_MODE=hybrid`: for multi-visit PDFs (dated historial), clinical fields are filled from **heuristics** and the slow clinical LLM call is skipped.
+- Default `LLM_CLINICAL_MODE=hybrid`: for multi-visit PDFs with strong historial hints, **clinical narrative** LLM is skipped but **clinical summary polish** may still run when Ollama is available; heuristic clinical summary is always generated. Weak-hint documents may call narrative LLM instead of polish.
 - Demographics LLM is also skipped when header heuristics find `pet.name`.
+- `LLM_CLINICAL_MODE=heuristic`: fastest — no clinical LLM calls; heuristic clinical summary only.
 - If the LLM is used and times out, the record still completes with heuristic data (no hard failure).
-- Fastest local mode: `LLM_CLINICAL_MODE=heuristic`.
 - Optional smaller model: `OLLAMA_MODEL=llama3.2:3b`.
 
 ## Future improvements

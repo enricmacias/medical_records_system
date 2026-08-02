@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CLINICAL_RESUME_MAX,
+  CLINICAL_SUMMARY_MAX,
   buildClinicalResume,
   buildStructuredPetPayload,
   displaySpecies,
@@ -69,10 +70,17 @@ describe('buildClinicalResume', () => {
     expect(resume).toContain('08/04/20 — Giardia positive')
   })
 
-  it('caps resume length at 1000 characters', () => {
-    const longSummary = 'x'.repeat(1200)
+  it('preserves paragraph breaks from stored clinical.history', () => {
+    const resume = buildClinicalResume({
+      history: 'First paragraph.\n\nSecond paragraph.',
+    })
+    expect(resume).toBe('First paragraph.\n\nSecond paragraph.')
+  })
+
+  it('caps resume length at 2000 characters', () => {
+    const longSummary = 'x'.repeat(CLINICAL_SUMMARY_MAX + 50)
     const resume = buildClinicalResume({ history: longSummary })
-    expect(resume).toHaveLength(CLINICAL_RESUME_MAX)
+    expect(resume).toHaveLength(CLINICAL_SUMMARY_MAX)
   })
 
   it('falls back to diagnosis fields when there are no entries', () => {
@@ -121,8 +129,6 @@ describe('isStructuredRecordDirty', () => {
       isStructuredRecordDirty({
         data: structuredClone(seed),
         seed,
-        clinicalResume: 'same',
-        baselineResume: 'same',
         medicationsText: 'Fortiflora',
         baselineMedications: 'Fortiflora',
       }),
@@ -134,11 +140,22 @@ describe('isStructuredRecordDirty', () => {
       isStructuredRecordDirty({
         data: { ...seed, pet: { ...seed.pet, name: 'Buddy' } },
         seed,
-        clinicalResume: 'same',
-        baselineResume: 'same',
         medicationsText: '',
         baselineMedications: '',
       }),
     ).toBe(true)
+  })
+
+  it('is false when only clinical.history changes (summary is not editable)', () => {
+    const data = structuredClone(seed)
+    data.clinical = { history: 'A different summary from extraction.' }
+    expect(
+      isStructuredRecordDirty({
+        data,
+        seed,
+        medicationsText: '',
+        baselineMedications: '',
+      }),
+    ).toBe(false)
   })
 })

@@ -10,6 +10,14 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, Field
 
+from app.adapters.clinical_summary import (
+    CLINICAL_SUMMARY_POLISH_PROMPT,
+    ClinicalSummaryPolish,
+    finalize_clinical_summary,
+    has_clinical_content,
+    summary_polish_user_prompt,
+    truncate_clinical_summary,
+)
 from app.adapters.text_hints import (
     build_layout_hints,
     clinical_focus_text,
@@ -192,7 +200,8 @@ class OllamaStructurer(MedicalRecordStructurer):
             clinical=clinical,
             meta=demographics.meta,
         )
-        return self._apply_fallbacks(record, hints)
+        record = self._apply_fallbacks(record, hints)
+        return self._finalize_clinical_summary(record, hints, body)
 
     def _should_call_clinical_llm(self, hints: dict[str, Any]) -> bool:
         mode = (self.clinical_mode or "hybrid").lower()
@@ -220,10 +229,6 @@ class OllamaStructurer(MedicalRecordStructurer):
         history = None
         chief = None
         if entries:
-            history = (
-                f"Historial con {len(entries)} visitas destacadas "
-                f"desde {entries[0].get('date')} hasta {entries[-1].get('date')}."
-            )
             chief = entries[-1].get("summary")
         return ClinicalInfo(
             chief_complaint=chief,
@@ -377,13 +382,6 @@ class OllamaStructurer(MedicalRecordStructurer):
         if not clinical.get("medications") and hints.get("medication_hints"):
             clinical["medications"] = hints["medication_hints"]
 
-        if not clinical.get("history") and clinical.get("history_entries"):
-            entries = clinical["history_entries"]
-            clinical["history"] = (
-                f"Historial con {len(entries)} visitas destacadas "
-                f"desde {entries[0].get('date')} hasta {entries[-1].get('date')}."
-            )
-
         if not clinical.get("chief_complaint") and clinical.get("history_entries"):
             clinical["chief_complaint"] = clinical["history_entries"][-1].get("summary")
 
@@ -421,6 +419,44 @@ class OllamaStructurer(MedicalRecordStructurer):
 
         return MedicalRecord.model_validate(data)
 
+    def _should_polish_clinical_summary(self, hints: dict[str, Any]) -> bool:
+        mode = (self.clinical_mode or "hybrid").lower()
+        if mode == "heuristic":
+            return False
+        if mode == "llm":
+            return True
+        return self._clinical_hints_sufficient(hints)
+
+    def _finalize_clinical_summary(
+        self,
+        record: MedicalRecord,
+        hints: dict[str, Any],
+        body: str,
+    ) -> MedicalRecord:
+        baseline_record = finalize_clinical_summary(record)
+        if not self._should_polish_clinical_summary(hints):
+            return baseline_record
+        if not has_clinical_content(baseline_record, hints):
+            return baseline_record
+        baseline = (baseline_record.clinical.history or "").strip()
+        try:
+            polished = self._chat_model(
+                model_cls=ClinicalSummaryPolish,
+                system=CLINICAL_SUMMARY_POLISH_PROMPT,
+                user=summary_polish_user_prompt(
+                    baseline, hints, body, record=baseline_record
+                ),
+            )
+            if polished.summary and polished.summary.strip():
+                data = baseline_record.model_dump()
+                data["clinical"]["history"] = truncate_clinical_summary(
+                    polished.summary.strip()
+                )
+                return MedicalRecord.model_validate(data)
+        except Exception:
+            pass
+        return baseline_record
+
 
 class FakeLLMStructurer(MedicalRecordStructurer):
     """Deterministic structurer for tests and demos without Ollama."""
@@ -449,7 +485,8 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                     "summary": "Conjuntivitis folicular; provocación con pienso.",
                 },
             ]
-            return MedicalRecord(
+            return finalize_clinical_summary(
+                MedicalRecord(
                 pet=PetInfo(
                     name=likely.get("pet.name") or "MARLEY",
                     species=normalize_species_dog_cat(likely.get("pet.species")) or "Dog",
@@ -468,10 +505,6 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                 ),
                 clinical=ClinicalInfo(
                     chief_complaint=entries[-1]["summary"] if entries else None,
-                    history=(
-                        "Historial completo desde cachorro: parasitosis, cuerpos "
-                        "extraños, giardiasis recurrente, conjuntivitis, vacunaciones."
-                    ),
                     examination="Exploración variable según visita; heces y ojos frecuentes focos de atención.",
                     diagnosis="; ".join(hints.get("diagnosis_hints") or ["Giardiasis", "Conjuntivitis"]),
                     treatment="Dietas digestivas/hipoalergénicas, antiparasitarios, colirios, probióticos.",
@@ -494,12 +527,13 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                         )
                     ],
                     history_entries=[HistoryEntry(**e) for e in entries],
-                    notes="Documento en español con historial multi-visita.",
+                    notes=None,
                 ),
                 meta=MetaInfo(
                     source_language="es",
                     extraction_confidence="high",
                     missing_fields=[],
+                ),
                 ),
             )
 
@@ -509,7 +543,8 @@ class FakeLLMStructurer(MedicalRecordStructurer):
         elif "vaccination" in lower or "vacuna" in lower:
             diagnosis = "Routine vaccination"
 
-        return MedicalRecord(
+        return finalize_clinical_summary(
+            MedicalRecord(
             pet=PetInfo(
                 name="Buddy"
                 if "buddy" in lower
@@ -552,8 +587,7 @@ class FakeLLMStructurer(MedicalRecordStructurer):
             clinical=ClinicalInfo(
                 chief_complaint="Left ear scratching and head shaking"
                 if "ear" in lower
-                else None,
-                history="Symptoms for 3 days" if "3 days" in lower else None,
+                else ("Symptoms for 3 days" if "3 days" in lower else None),
                 examination="Mild erythema in left ear canal"
                 if "erythema" in lower
                 else None,
@@ -577,6 +611,7 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                 source_language=hints.get("language_hint") or "en",
                 extraction_confidence="high" if text else "low",
                 missing_fields=[],
+            ),
             ),
         )
 

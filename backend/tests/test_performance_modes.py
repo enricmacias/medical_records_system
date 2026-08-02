@@ -79,7 +79,7 @@ def test_clinical_from_hints_builds_visit_medications_and_diagnosis(
     assert any(m.name == "Tobradex" for m in clinical.medications)
     assert any(m.name == "Fortiflora" for m in clinical.medications)
     assert clinical.chief_complaint
-    assert clinical.history and "visitas" in clinical.history.lower()
+    assert clinical.history is None
 
 
 def test_merge_narrative_overwrites_only_non_empty_fields(
@@ -124,6 +124,10 @@ def test_heuristic_mode_structures_spanish_without_ollama() -> None:
     assert record.meta.source_language == "es"
     assert record.clinical.history_entries
     assert record.clinical.medications
+    assert record.clinical.history
+    assert len(record.clinical.history) <= 2000
+    assert "El expediente documenta" in record.clinical.history
+    assert "MARLEY" not in record.clinical.history
 
 
 def test_ollama_heuristic_splits_compound_nombre_line_without_llm(

@@ -12,7 +12,9 @@
 - [x] Canceling edit with unsaved changes prompts before discarding; a successful save shows a success notice
 - [x] User can list previous records and open one for review
 - [x] Original PDF remains downloadable
-- [x] Spanish multi-visit historial-style text can yield pet/owner demographics, language `es`, visit highlights in stored JSON, and key clinical hints (UI surfaces a clinical resume + medications list; see data-model UI presentation)
+- [x] Spanish multi-visit historial-style text can yield pet/owner demographics, language `es`, visit highlights in stored JSON, and key clinical hints (UI surfaces **Clinical summary** + medications list; see data-model UI presentation)
+- [x] **Clinical summary** (`clinical.history`): readable prose (≤2000 characters), generated at upload/re-process; read-only in the UI; excludes pet/owner demographics; brief medication mention with full list in Medications section; Spanish prose when `source_language` is `es`
+- [x] Editing and saving Pet, Owner, or Medications does **not** change the clinical summary; summary changes require re-upload/re-process
 - [x] Inline compound header lines split into separate pet fields — e.g. `ALYA - Nacimiento: 05/07/2018` → name `ALYA` and DOB `05/07/2018`; `Nombre ALYA - Nacimiento: …` and `Hembra Estado: FERTIL Peso:0` → sex `Hembra` (`pet.name` must not contain `Nacimiento:`; weight on compound lines is not stored)
 - [x] Label-free species and breed header lines infer pet demographics without `Especie:` / `Raza:` labels — e.g. standalone `Canino` → species `Dog`; `CANINA - YORKSHIRE TERRIER` → species `Dog`, breed `YORKSHIRE TERRIER`, sex hint `Hembra`; `Felina Persa` → species `Cat`, breed `Persa`. Labeled `Especie` / `Raza` values take precedence over unlabeled lines on the same document. Address-like breed tails (e.g. `Canino - C/ ORTEGA …`) do not populate `pet.breed`. Species stored/displayed as canonical **`Dog`** / **`Cat`** when inferred.
 
@@ -20,9 +22,9 @@
 
 - [x] FastAPI REST API implements `specs/api.md`
 - [x] Extraction uses pdfplumber behind an interface
-- [x] Structuring uses hybrid heuristics ± Ollama structured outputs (`format` + JSON Schema) per `LLM_CLINICAL_MODE`
+- [x] Structuring uses hybrid heuristics ± Ollama structured outputs (`format` + JSON Schema) per `LLM_CLINICAL_MODE` (clinical narrative + optional clinical summary polish — see `specs/architecture.md`)
 - [x] Default model is `qwen2.5:7b` (env-configurable)
-- [x] Fake LLM adapter allows tests without a live Ollama instance
+- [x] Fake LLM adapter allows tests without a live Ollama instance (including heuristic clinical summary)
 - [x] Hybrid/heuristic paths can complete multi-visit records without a live Ollama instance when historial hints exist
 - [x] Hybrid/heuristic paths can complete records with inline compound demographics without a live Ollama instance when header hints suffice
 - [x] Hybrid/heuristic paths can complete records with label-free species/breed header lines without a live Ollama instance when header hints suffice
@@ -32,18 +34,18 @@
 
 ## Quality bar
 
-- [x] Backend unit/integration tests cover extraction, heuristics/hybrid modes (including inline compound demographics in `tests/test_inline_demographics.py` and label-free species/breed in `tests/test_unlabeled_species_breed.py`), schema validation, async/sync API paths (with FakeLLM)
-- [x] Frontend unit tests (Vitest) cover display helpers (including species normalization for `CANINA` / `Felina`), RecordForm view/edit/save, and RecordPage extracted-text / edit-cancel / save-notice flows
+- [x] Backend unit/integration tests cover extraction, heuristics/hybrid modes (including inline compound demographics in `tests/test_inline_demographics.py`, label-free species/breed in `tests/test_unlabeled_species_breed.py`, and clinical summary in `tests/test_clinical_summary.py`), schema validation, async/sync API paths (with FakeLLM)
+- [x] Frontend unit tests (Vitest) cover display helpers (including clinical summary / `buildClinicalResume`, species normalization for `CANINA` / `Felina`), RecordForm view/edit/save (clinical summary read-only and preserved on save), and RecordPage extracted-text / edit-cancel / save-notice flows
 - [x] Failure matrix honored: Ollama down/timeout does not force `failed` when heuristics produce usable structured data; unrecoverable errors set `failed` with `error_message`
 - [x] Health reports Ollama reachability without silently inventing empty structured payloads
 - [x] Code organized for maintainability (adapters/services/domain separation)
 
 ## Demo path
 
-1. Start stack (`docker compose up` or local dev). Ollama optional for hybrid historial demos, inline compound header demos, and label-free species/breed header demos; for full LLM narrative pull `qwen2.5:7b` and ensure Ollama is running.
+1. Start stack (`docker compose up` or local dev). Ollama optional for hybrid historial demos (heuristic clinical summary still generated); required for clinical narrative on weak-hint documents and for summary polish on strong-hint documents under `hybrid`. Pull `qwen2.5:7b` when using live Ollama.
 2. Upload sample PDF fixture and/or a Spanish multi-visit style document.
 3. Optionally upload or paste-test a document whose header uses **inline compound lines** (`ALYA - Nacimiento: …`, `Nombre … - Nacimiento: …`, or `Hembra Estado: …`) or **label-free species/breed lines** (`Canino` alone, `CANINA - YORKSHIRE TERRIER`, or `Felina Persa`).
 4. Observe `processing` then `completed` on the record page (async).
-5. Review the **Structured record** (Pet, Owner, Clinical record resume, Medications, Meta). Confirm `pet.name` is not a compound string; confirm species shows as **Dog** or **Cat** when inferred. Optionally open **Extracted text**.
-6. Click **Edit**, change a field, **Save corrections** — confirm the success notice; reload and verify the change persists. Optionally change a field and **Cancel** to exercise the unsaved-changes prompt.
-7. Note: records processed **before** an extraction fix keep old `structured_data` until re-uploaded or manually corrected.
+5. Review the **Structured record** (Pet, Owner, **Clinical summary**, Medications, Meta). Confirm `pet.name` is not a compound string; confirm species shows as **Dog** or **Cat** when inferred. Confirm clinical summary is readable prose without pet/owner names or weight. Optionally open **Extracted text**.
+6. Click **Edit**, change a field, **Save corrections** — confirm the success notice; reload and verify the change persists and **clinical summary is unchanged**. Optionally change a field and **Cancel** to exercise the unsaved-changes prompt.
+7. Note: records processed **before** an extraction fix keep old `structured_data` (including clinical summary) until re-uploaded or manually corrected.

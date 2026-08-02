@@ -7,10 +7,10 @@
 - Text extraction with **pdfplumber**
 - Structured extraction via a **hybrid pipeline**:
   - layout/visit **heuristics** (Spanish/English clinic headers — including **inline compound lines** such as `ALYA - Nacimiento: DATE` and `Hembra Estado: …` (sex only); **label-free species/breed lines** such as `CANINA - YORKSHIRE TERRIER` or standalone `Canino` without `Especie:` / `Raza:` labels; dated historial blocks; diagnosis/med hints)
-  - optional **Ollama** structured outputs (`qwen2.5:7b` by default) when heuristics are weak or `LLM_CLINICAL_MODE=llm`
-  - **FakeLLM** adapter for tests and demos without Ollama
+  - optional **Ollama** structured outputs (`qwen2.5:7b` by default) for demographics, clinical narrative (weak hints or `llm` mode), and clinical summary polish (strong hints or `llm` mode) per `LLM_CLINICAL_MODE`
+  - **FakeLLM** adapter for tests and demos without Ollama (heuristic clinical summary included)
 - Persist original file, raw text, and structured JSON (SQLite + filesystem)
-- React UI: upload, list, on-demand extracted-text preview, structured record (read-only by default; edit mode for Pet / Owner / clinical resume / medications / Meta), **processing-state polling**
+- React UI: upload, list, on-demand extracted-text preview, structured record (read-only by default; edit mode for Pet / Owner / Medications / Meta; **Clinical summary** always read-only), **processing-state polling**
 - REST API (FastAPI)
 - **Async processing by default** (`PROCESSING_MODE=async`): upload returns immediately; extract + structure run in a background task; client polls record status
 - Docker Compose for API + frontend

@@ -44,7 +44,7 @@ Supports multilingual clinic PDFs (especially Spanish/English), **two-column hea
   },
   "clinical": {
     "chief_complaint": "string | null",
-    "history": "string | null",
+    "history": "string | null /* Clinical summary: readable prose, max 2000 chars, extraction/re-process only in v1 */",
     "examination": "string | null",
     "diagnosis": "string | null",
     "treatment": "string | null",
@@ -84,11 +84,11 @@ Supports multilingual clinic PDFs (especially Spanish/English), **two-column hea
 | `pet.sex` | Sex / gender. Recognized from `Sexo:` labels; standalone line-start words (`Hembra`, `Macho`, `Male`, `Female`); compound lines such as **`Hembra Estado: FERTIL Peso:0`** (sex only — weight on the line is not stored); and feminine species tokens (`canina`, `felina`, `gata`) on unlabeled species/breed header lines → **`Hembra`** when sex is not already set. |
 | `owner.address` | Postal address lines when recoverable from header layout. |
 | `visit` | Summary of the **most recent** visit (date, clinic, vet if known) — not the full history. Stored by the pipeline; **not shown** as its own section in the v1 record form. |
-| `clinical.chief_complaint` / `examination` / `treatment` | Synthesis biased to **recent** clinically important content. Stored by the pipeline; **not directly edited** in the v1 form (may feed the clinical resume fallback). |
-| `clinical.history` | Short overall narrative / **resume of clinic visits**. UI editing targets this field (max **1000** characters). |
-| `clinical.diagnosis` | Main conditions (comma/semicolon-separated if several). Stored; used as resume fallback when history/entries are empty. |
-| `clinical.medications` | Important drugs across visits (typically up to ~8); dose/frequency when known. UI presents as a single multi-line list. |
-| `clinical.history_entries` | Dated visit highlights. Cap **12** entries: keep early context + most recent visits when the historial is longer. Summaries may be truncated. Used to **synthesize the clinical resume** in the UI when `history` is empty; not edited row-by-row in v1. |
+| `clinical.chief_complaint` / `examination` / `treatment` | Synthesis biased to **recent** clinically important content. Stored by the pipeline; **not directly edited** in the v1 form. Feed **heuristic clinical summary** generation and the UI display fallback when `clinical.history` is empty. |
+| `clinical.history` | **Clinical summary** (stored field name `history`). Readable prose generated at **upload / re-process** only (max **2000** characters). Written as 1–4 short paragraphs (`\n\n` separators) with complete sentences — not bullet fragments. Highlights diagnoses, visit timeline, examination findings, treatment, and **brief** medication mentions (full drug list remains in `clinical.medications`). **Language:** Spanish prose when `meta.source_language` is `es`; English otherwise. **Content rules:** excludes pet/owner demographics; strips weight tokens, chip-like numbers, and duplicate medication names from visit snippets; skips redundant chief complaint when it duplicates the latest visit; filters generic pipeline notes. **Read-only** in the v1 form (not edited on save; PATCH preserves the loaded value). Any `history` text produced by the optional **clinical narrative** LLM is **overwritten** by summary generation at the end of structuring. |
+| `clinical.diagnosis` | Main conditions (comma/semicolon-separated if several). Stored; used in heuristic summary generation and as part of the UI display fallback when `history` and `history_entries` are empty. |
+| `clinical.medications` | Important drugs across visits (typically up to ~8); dose/frequency when known. UI presents as a single multi-line list (fully editable). Brief drug names may also appear in the clinical summary. |
+| `clinical.history_entries` | Dated visit highlights. Cap **12** entries: keep early context + most recent visits when the historial is longer. Summaries may be truncated. Feed heuristic summary generation; used for **legacy UI fallback** (dated lines) when `history` is empty; not edited row-by-row in v1. |
 | `meta.source_language` | ISO 639-1 when detectable (`es`, `en`, …). |
 | `meta.extraction_confidence` | Pipeline self-assessment (`low` / `medium` / `high`). |
 | `meta.missing_fields` | Important paths still empty after extraction (e.g. `pet.name`, `pet.species`, `pet.breed`). Listed when null/empty after structuring; inference failures are not invented — they appear here or remain `null`. |
@@ -101,7 +101,7 @@ The full JSON above remains the persistence/API contract. The structured form sh
 |---|---|---|
 | Pet | six `pet` fields | **Name**, **Species**, **Breed**, **Sex**, **Date of birth**, **Microchip** — read-only until Edit. Species displays and saves as **`Dog`** or **`Cat`** (Spanish/English source tokens normalized on display and PATCH). |
 | Owner | `owner.*` | Name, phone, email, address; read-only until Edit. |
-| Clinical record | primarily `clinical.history` | One **Resume of clinic visits** field, max **1000** characters. Display seed: prefer non-empty `history`; else build dated lines from `history_entries`; else join diagnosis / chief_complaint / treatment. |
+| Clinical summary | `clinical.history` | **Clinical summary** (max **2000** characters), **read-only** always (including in Edit mode). Hint: “Auto-generated on upload; not editable.” Display order: (1) non-empty `history` from extraction (paragraph breaks preserved via `pre-wrap`); (2) if `history` empty, dated lines from `history_entries`; (3) if both empty, join `diagnosis`, `chief_complaint`, and `treatment`. Changes to `clinical.history` do **not** mark the form dirty. |
 | Medications | `clinical.medications` | One multi-line field: one medication per line; optional `Name (dosage, frequency)`. Parsed back into the medications array on save. |
 | Meta | `meta.*` | Confidence, language, missing fields (display only). |
 
@@ -109,7 +109,7 @@ The full JSON above remains the persistence/API contract. The structured form sh
 
 **Edit interaction:** structured sections are read-only by default. **Edit** enables inputs; **Save corrections** PATCHes `structured_data`; **Cancel** exits edit mode and discards unsaved edits (with a confirm dialog when dirty). A success notice is shown after save. Species is edited via a **Dog / Cat** select; read-only display shows normalized labels.
 
-**Save semantics:** the form updates `pet` (six fields), `owner`, `clinical.history`, and `clinical.medications` from the visible controls. Other structured keys present on the record (e.g. `visit`, `history_entries`, unused clinical fields) are **retained** in the PATCH payload unless the client omits them — they are not cleared by the v1 UI.
+**Save semantics:** the form updates `pet` (six fields), `owner`, and `clinical.medications` from the visible controls. `clinical.history` is **preserved** from the loaded record (clinical summary is not editable and is only regenerated by the pipeline on upload/re-process). Other structured keys present on the record (e.g. `visit`, `history_entries`, unused clinical fields) are **retained** in the PATCH payload unless the client omits them — they are not cleared by the v1 UI.
 
 ## Validation rules
 
@@ -118,7 +118,7 @@ The full JSON above remains the persistence/API contract. The structured form sh
 - `meta.extraction_confidence` defaults to `low` if omitted
 - `meta.missing_fields` lists human-readable paths that were null/empty after extraction
 - `meta.source_language` should be an ISO 639-1 code when detectable
-- UI enforces a **1000-character** cap on the clinical resume (`clinical.history` when edited in the form)
+- **Clinical summary length:** generation truncates `clinical.history` to **2000** characters (paragraph/sentence-aware ellipsis). UI displays up to **2000** characters. Pydantic does **not** enforce max length on PATCH — clients should not edit the summary in v1
 - On PATCH, client normalizes `pet.species` to **`Dog`** or **`Cat`** when recognizable; otherwise `null`
 
 ## Extraction notes
@@ -144,12 +144,21 @@ The full JSON above remains the persistence/API contract. The structured form sh
    - **Label-free** species/breed hints use **`setdefault`** — they fill gaps only and do **not** override values already set by labeled parsers (`Especie …`, `Raza …`, inline `Especie:` / `Raza:` segments, or generic label rules).
 5. **Demographics LLM:** if `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED=true` and `pet.name` is hinted, skip demographics LLM and build from hints; otherwise try a short Ollama demographics call and fall back to hints on error.
    - **Caveat:** skip is keyed only on `pet.name` today. A wrong or compound `pet.name` can still skip the LLM and leave DOB/sex/species/breed empty — compound-line and unlabeled heuristics mitigate this; a smarter skip (require name + key fields) is future work.
-6. **Clinical (`LLM_CLINICAL_MODE`):**
-   - Always build a clinical baseline from heuristics (`history_entries`, diagnoses, meds, chief/history when possible).
-   - `heuristic`: stop here (no clinical LLM).
-   - `hybrid` (default): call a **small clinical narrative** LLM only when clinical hints are weak.
-   - `llm`: always attempt the clinical narrative LLM.
-7. When LLM is called: JSON Schema is **inlined** (no `$ref`); prompts use a short focused window; `num_predict` / `num_ctx` cap cost. LLM species output is normalized to **`Dog`** / **`Cat`** when recognizable.
-8. On LLM timeout/error: **keep heuristic clinical data** and complete when possible; notes may state that LLM narrative was skipped.
-9. Long documents: header + recent tail may be used when sending text to the LLM; visit-block heuristics still see the full normalized text for dating/splitting.
-10. **Re-processing:** extraction improvements apply on **new uploads** or when processing runs again; existing `structured_data` is not automatically refreshed until the record is re-processed or the user edits via PATCH.
+6. **Clinical field extraction (`LLM_CLINICAL_MODE`)** — populates `chief_complaint`, `examination`, `treatment`, `diagnosis`, `medications`, `history_entries`, and `notes` via heuristics ± optional **clinical narrative** LLM (`ClinicalNarrative` schema):
+   - Build structured clinical fields from visit/diagnosis/med heuristics (`_clinical_from_hints`).
+   - `heuristic`: no clinical narrative LLM.
+   - `hybrid` (default): call clinical narrative LLM **only when clinical hints are weak** (no visit blocks, diagnosis hints, or medication hints).
+   - `llm`: always attempt clinical narrative LLM.
+   - On narrative LLM timeout/error: keep heuristic clinical fields; `notes` may state that LLM narrative was skipped.
+   - **Note:** narrative output may include a `history` field, but it is **not** the persisted clinical summary — see step 7.
+7. **Clinical summary (`adapters/clinical_summary.py`)** — always runs at end of structuring (Ollama and FakeLLM) to set `clinical.history`:
+   - **Heuristic prose** (`build_heuristic_clinical_summary`): builds readable paragraphs from structured clinical fields (not pet/owner); truncates to 2000 chars.
+   - **Optional LLM polish** (`ClinicalSummaryPolish`): separate structured-output pass that rewrites the heuristic baseline into clearer prose. Gating (inverse of narrative LLM in hybrid):
+     - `heuristic`: no polish (heuristic summary only).
+     - `hybrid`: polish when clinical hints are **sufficient** (visit blocks and/or diagnosis/med hints).
+     - `llm`: always attempt polish (may run **after** narrative LLM — up to two clinical LLM calls in `llm` mode).
+   - On polish timeout/error: keep heuristic summary.
+   - FakeLLM: heuristic summary only (no polish).
+8. When any LLM is called: JSON Schema is **inlined** (no `$ref`); prompts use a short focused window; `num_predict` / `num_ctx` cap cost. LLM species output is normalized to **`Dog`** / **`Cat`** when recognizable.
+9. Long documents: header + recent tail may be used when sending text to LLM calls; visit-block heuristics still see the full normalized text for dating/splitting.
+10. **Re-processing:** extraction and clinical summary improvements apply on **new uploads** or when processing runs again; existing `structured_data` (including `clinical.history`) is not automatically refreshed until re-process or manual PATCH of other fields. There is no separate re-process API in v1 — re-upload or manual correction only.

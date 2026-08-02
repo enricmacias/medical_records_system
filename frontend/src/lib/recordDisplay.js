@@ -43,8 +43,6 @@ export function normalizeComparable(value) {
 export function isStructuredRecordDirty({
   data,
   seed,
-  clinicalResume,
-  baselineResume,
   medicationsText,
   baselineMedications,
 }) {
@@ -56,26 +54,25 @@ export function isStructuredRecordDirty({
   const ownerChanged = ownerKeys.some(
     (key) => normalizeComparable(data.owner?.[key]) !== normalizeComparable(seed.owner?.[key]),
   )
-  const resumeChanged =
-    normalizeComparable(clinicalResume) !== normalizeComparable(baselineResume)
   const medsChanged =
     normalizeComparable(medicationsText) !== normalizeComparable(baselineMedications)
-  return petChanged || ownerChanged || resumeChanged || medsChanged
+  return petChanged || ownerChanged || medsChanged
 }
 
-// Clinical resume helpers used by Owner / Clinical / Medications sections.
-export const CLINICAL_RESUME_MAX = 1000
+// Clinical summary helpers (stored in clinical.history).
+export const CLINICAL_SUMMARY_MAX = 2000
+export const CLINICAL_RESUME_MAX = CLINICAL_SUMMARY_MAX
 
 export function buildClinicalResume(clinical) {
   if (clinical?.history?.trim()) {
-    return clinical.history.trim().slice(0, CLINICAL_RESUME_MAX)
+    return clinical.history.trim().slice(0, CLINICAL_SUMMARY_MAX)
   }
   const entries = clinical?.history_entries || []
   if (!entries.length) {
     const parts = [clinical?.diagnosis, clinical?.chief_complaint, clinical?.treatment].filter(
       Boolean,
     )
-    return parts.join('. ').slice(0, CLINICAL_RESUME_MAX)
+    return parts.join('. ').slice(0, CLINICAL_SUMMARY_MAX)
   }
   const lines = entries
     .filter((e) => e?.date || e?.summary)
@@ -83,8 +80,8 @@ export function buildClinicalResume(clinical) {
   let resume = ''
   for (const line of lines) {
     const next = resume ? `${resume}\n${line}` : line
-    if (next.length > CLINICAL_RESUME_MAX) {
-      const remaining = CLINICAL_RESUME_MAX - resume.length - 1
+    if (next.length > CLINICAL_SUMMARY_MAX) {
+      const remaining = CLINICAL_SUMMARY_MAX - resume.length - 1
       if (remaining > 20) {
         resume = `${resume}\n${line.slice(0, remaining - 1)}…`
       }

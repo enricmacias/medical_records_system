@@ -35,7 +35,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Ollama structurer (`format` + schema)
 - [x] FakeLLM structurer
 - [x] Wire into upload pipeline; handle failures
-- [x] Show structured data in UI (Pet, Owner, Clinical record resume, Medications list, Meta)
+- [x] Show structured data in UI (Pet, Owner, Clinical summary, Medications list, Meta)
 
 ## T5 — Edit + persist
 
@@ -55,7 +55,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 - [x] `PROCESSING_MODE=async` default with FastAPI `BackgroundTasks`
 - [x] UI polling while `status=processing`
-- [x] Hybrid clinical mode: heuristics-first; skip clinical LLM when hints sufficient
+- [x] Hybrid clinical mode: heuristics-first; narrative LLM when hints weak; summary polish when hints sufficient (see architecture structuring strategy)
 - [x] Skip demographics LLM when `pet.name` hinted
 - [x] LLM timeout/error falls back to heuristics instead of hard-failing recoverable cases
 - [x] Env knobs: `LLM_CLINICAL_MODE`, `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_NUM_PREDICT`, `OLLAMA_NUM_CTX`
@@ -69,7 +69,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 ## T9 — Record detail UI + frontend tests (done)
 
 - [x] Collapse extracted text behind **Extracted text**; structured view read-only until **Edit**
-- [x] Clinical record resume (≤1000 chars) + single medications list; keep Pet / Owner / Meta
+- [x] Clinical summary (≤2000 chars, extraction-time prose) + single medications list; keep Pet / Owner / Meta
 - [x] Save next to Cancel; discard warning; save success notice
 - [x] Vitest + Testing Library coverage for helpers, RecordForm, RecordPage
 - [x] Align specs (scope/architecture/data-model/acceptance/tasks) with this UI
@@ -95,3 +95,12 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 - [x] Drop `pet.weight` and `pet.coat_color` from domain schema, heuristics, LLM structurers, tests, and specs
 - [x] `Hembra Estado: … Peso: …` compound lines still set `pet.sex` only
+
+## T13 — Clinical summary (done)
+
+- [x] `adapters/clinical_summary.py`: heuristic prose summary → `clinical.history` (≤2000 chars, Spanish/English, sanitization)
+- [x] Optional LLM summary polish pass (`ClinicalSummaryPolish`); gating per `LLM_CLINICAL_MODE` (inverse of narrative LLM in hybrid)
+- [x] UI **Clinical summary** section: read-only always; paragraph preservation; legacy display fallback
+- [x] Save preserves loaded `clinical.history`; dirty check excludes summary
+- [x] `tests/test_clinical_summary.py`; frontend RecordForm / `recordDisplay` tests
+- [x] Align specs (data-model extraction §6–7, architecture, acceptance, scope, tasks, ADR, README)

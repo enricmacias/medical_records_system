@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CLINICAL_RESUME_MAX,
   buildClinicalResume,
   buildStructuredPetPayload,
   displaySpecies,
@@ -106,14 +105,13 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
     return clone
   }, [initial])
 
-  const baselineResume = useMemo(() => buildClinicalResume(seed.clinical), [seed])
+  const clinicalSummary = useMemo(() => buildClinicalResume(seed.clinical), [seed])
   const baselineMedications = useMemo(
     () => formatMedicationsList(seed.clinical.medications),
     [seed],
   )
 
   const [data, setData] = useState(seed)
-  const [clinicalResume, setClinicalResume] = useState(baselineResume)
   const [medicationsText, setMedicationsText] = useState(baselineMedications)
 
   const dirty = useMemo(
@@ -121,12 +119,10 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
       isStructuredRecordDirty({
         data,
         seed,
-        clinicalResume,
-        baselineResume,
         medicationsText,
         baselineMedications,
       }),
-    [data, clinicalResume, medicationsText, seed, baselineResume, baselineMedications],
+    [data, medicationsText, seed, baselineMedications],
   )
 
   useEffect(() => {
@@ -144,13 +140,12 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
   function handleSave(event) {
     event.preventDefault()
     if (!editing) return
-    const resume = (clinicalResume || '').slice(0, CLINICAL_RESUME_MAX)
     const payload = {
       ...data,
       pet: buildStructuredPetPayload(data.pet),
       clinical: {
         ...data.clinical,
-        history: resume || null,
+        history: seed.clinical?.history ?? null,
         medications: parseMedicationsList(medicationsText),
       },
     }
@@ -235,16 +230,15 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
         />
       </fieldset>
 
-      <fieldset disabled={!editing}>
-        <legend>Clinical record</legend>
+      <fieldset>
+        <legend>Clinical summary</legend>
         <TextArea
-          label="Resume of clinic visits"
-          value={clinicalResume}
-          onChange={(v) => setClinicalResume(v ?? '')}
+          label="Clinical summary"
+          value={clinicalSummary}
+          onChange={() => {}}
           rows={8}
-          maxLength={CLINICAL_RESUME_MAX}
-          hint="Summary across visits · "
-          editing={editing}
+          hint="Auto-generated on upload; not editable."
+          editing={false}
         />
       </fieldset>
 

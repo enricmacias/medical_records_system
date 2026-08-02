@@ -21,7 +21,7 @@ const sampleRecord = {
   },
   visit: {},
   clinical: {
-    history: null,
+    history: 'Stored clinical summary from extraction.',
     history_entries: [
       { date: '08/12/19', summary: 'Emergency visit' },
       { date: '03/10/20', summary: 'Conjunctivitis' },
@@ -49,10 +49,33 @@ describe('RecordForm', () => {
     expect(screen.getByText('Pet')).toBeInTheDocument()
     expect(screen.getByText('Marley')).toBeInTheDocument()
     expect(screen.getByText('Dog')).toBeInTheDocument()
-    expect(screen.getByText('Clinical record')).toBeInTheDocument()
-    expect(screen.getByText(/08\/12\/19 — Emergency visit/)).toBeInTheDocument()
+    expect(screen.getAllByText('Clinical summary').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Stored clinical summary from extraction.')).toBeInTheDocument()
     expect(screen.getByText('Tobradex')).toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('displays multi-paragraph clinical summary with preserved line breaks', () => {
+    const multiParagraph = {
+      ...sampleRecord,
+      clinical: {
+        ...sampleRecord.clinical,
+        history: 'First paragraph about giardiasis.\n\nSecond paragraph about visits.',
+      },
+    }
+    render(
+      <RecordForm
+        initial={multiParagraph}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+    const summaryEl = screen.getByText((_, el) =>
+      el?.classList?.contains('field-value-block') &&
+      el.textContent?.includes('First paragraph about giardiasis.'),
+    )
+    expect(summaryEl.textContent).toContain('Second paragraph about visits.')
   })
 
   it('exposes editable fields and reports dirty changes while editing', async () => {
@@ -110,7 +133,7 @@ describe('RecordForm', () => {
     })
   })
 
-  it('saves clinical resume and medications list from the associated form', async () => {
+  it('preserves clinical summary on save and updates medications', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
 
@@ -128,9 +151,7 @@ describe('RecordForm', () => {
       </div>,
     )
 
-    const resume = screen.getByLabelText(/Resume of clinic visits/)
-    await user.clear(resume)
-    await user.type(resume, 'Short clinical resume')
+    expect(screen.queryByLabelText(/Clinical summary/)).not.toBeInTheDocument()
 
     const meds = screen.getByLabelText(/All medications/)
     await user.clear(meds)
@@ -140,7 +161,7 @@ describe('RecordForm', () => {
 
     expect(onSave).toHaveBeenCalledTimes(1)
     const payload = onSave.mock.calls[0][0]
-    expect(payload.clinical.history).toBe('Short clinical resume')
+    expect(payload.clinical.history).toBe('Stored clinical summary from extraction.')
     expect(payload.clinical.medications).toEqual([
       { name: 'Fortiflora', dosage: '1 sachet', frequency: 'daily' },
     ])
