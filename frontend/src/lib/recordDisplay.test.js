@@ -2,10 +2,52 @@ import { describe, expect, it } from 'vitest'
 import {
   CLINICAL_RESUME_MAX,
   buildClinicalResume,
+  buildStructuredPetPayload,
+  displaySpecies,
   formatMedicationsList,
   isStructuredRecordDirty,
+  normalizeSpeciesForStorage,
   parseMedicationsList,
 } from './recordDisplay'
+
+describe('species normalization', () => {
+  it('maps Spanish and English labels to Dog or Cat', () => {
+    expect(normalizeSpeciesForStorage('Canino')).toBe('Dog')
+    expect(normalizeSpeciesForStorage('CANINA')).toBe('Dog')
+    expect(normalizeSpeciesForStorage('Felino')).toBe('Cat')
+    expect(normalizeSpeciesForStorage('Felina')).toBe('Cat')
+    expect(normalizeSpeciesForStorage('dog')).toBe('Dog')
+    expect(normalizeSpeciesForStorage('Gato')).toBe('Cat')
+    expect(normalizeSpeciesForStorage('unknown')).toBeNull()
+  })
+
+  it('displays normalized species labels', () => {
+    expect(displaySpecies('Canino')).toBe('Dog')
+    expect(displaySpecies(null)).toBe('—')
+  })
+})
+
+describe('buildStructuredPetPayload', () => {
+  it('returns only the six structured pet fields', () => {
+    expect(
+      buildStructuredPetPayload({
+        name: 'ALYA',
+        species: 'Canino',
+        breed: 'Labrador',
+        sex: 'F',
+        date_of_birth: '05/07/2018',
+        microchip: '123',
+      }),
+    ).toEqual({
+      name: 'ALYA',
+      species: 'Dog',
+      breed: 'Labrador',
+      sex: 'F',
+      date_of_birth: '05/07/2018',
+      microchip: '123',
+    })
+  })
+})
 
 describe('buildClinicalResume', () => {
   it('prefers clinical.history when present', () => {
@@ -63,11 +105,18 @@ describe('medications list helpers', () => {
 
 describe('isStructuredRecordDirty', () => {
   const seed = {
-    pet: { name: 'Marley', species: 'Canino' },
+    pet: {
+      name: 'Marley',
+      species: 'Dog',
+      breed: 'Labrador',
+      sex: 'M',
+      date_of_birth: '04/10/19',
+      microchip: '941000024967769',
+    },
     owner: { name: 'Beatriz', phone: null, email: null, address: null },
   }
 
-  it('is false when values match the baseline', () => {
+  it('is false when all tracked fields match the baseline', () => {
     expect(
       isStructuredRecordDirty({
         data: structuredClone(seed),

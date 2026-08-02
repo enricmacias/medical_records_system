@@ -94,6 +94,8 @@ Update structured data after human review.
 **404** — not found  
 **422** — invalid schema
 
+Clients may send `pet.species` as **`Dog`** or **`Cat`** (v1 UI normalizes Spanish/English tokens on save). See `specs/data-model.md` for full field semantics and which pet fields the UI edits.
+
 ### `GET /api/records/{id}/file`
 
 Download/stream the original PDF.

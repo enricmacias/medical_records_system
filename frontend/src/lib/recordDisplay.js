@@ -1,3 +1,69 @@
+export const STRUCTURED_PET_FIELDS = [
+  'name',
+  'species',
+  'breed',
+  'sex',
+  'date_of_birth',
+  'microchip',
+]
+
+export function normalizeSpeciesForStorage(value) {
+  if (value == null || String(value).trim() === '') return null
+  const text = String(value).trim()
+  const lower = text.toLowerCase()
+  if (lower === 'dog' || /canino|canina|canine|perro/.test(lower)) return 'Dog'
+  if (lower === 'cat' || /felino|felina|feline|gato|gata/.test(lower)) return 'Cat'
+  if (text === 'Dog' || text === 'Cat') return text
+  return null
+}
+
+export function displaySpecies(value) {
+  const normalized = normalizeSpeciesForStorage(value)
+  if (normalized) return normalized
+  if (value == null || String(value).trim() === '') return '—'
+  return value
+}
+
+export function buildStructuredPetPayload(pet) {
+  return {
+    name: pet?.name?.trim() || null,
+    species: normalizeSpeciesForStorage(pet?.species),
+    breed: pet?.breed?.trim() || null,
+    sex: pet?.sex?.trim() || null,
+    date_of_birth: pet?.date_of_birth?.trim() || null,
+    microchip: pet?.microchip?.trim() || null,
+  }
+}
+
+export function normalizeComparable(value) {
+  if (value == null) return ''
+  return String(value).trim()
+}
+
+export function isStructuredRecordDirty({
+  data,
+  seed,
+  clinicalResume,
+  baselineResume,
+  medicationsText,
+  baselineMedications,
+}) {
+  const petChanged = STRUCTURED_PET_FIELDS.some(
+    (key) =>
+      normalizeComparable(data.pet?.[key]) !== normalizeComparable(seed.pet?.[key]),
+  )
+  const ownerKeys = ['name', 'phone', 'email', 'address']
+  const ownerChanged = ownerKeys.some(
+    (key) => normalizeComparable(data.owner?.[key]) !== normalizeComparable(seed.owner?.[key]),
+  )
+  const resumeChanged =
+    normalizeComparable(clinicalResume) !== normalizeComparable(baselineResume)
+  const medsChanged =
+    normalizeComparable(medicationsText) !== normalizeComparable(baselineMedications)
+  return petChanged || ownerChanged || resumeChanged || medsChanged
+}
+
+// Clinical resume helpers used by Owner / Clinical / Medications sections.
 export const CLINICAL_RESUME_MAX = 1000
 
 export function buildClinicalResume(clinical) {
@@ -58,41 +124,4 @@ export function parseMedicationsList(text) {
         frequency: parts.slice(1).join(', ') || null,
       }
     })
-}
-
-export function normalizeComparable(value) {
-  if (value == null) return ''
-  return String(value).trim()
-}
-
-export function isStructuredRecordDirty({
-  data,
-  seed,
-  clinicalResume,
-  baselineResume,
-  medicationsText,
-  baselineMedications,
-}) {
-  const petKeys = [
-    'name',
-    'species',
-    'breed',
-    'sex',
-    'date_of_birth',
-    'microchip',
-    'weight',
-    'coat_color',
-  ]
-  const ownerKeys = ['name', 'phone', 'email', 'address']
-  const petChanged = petKeys.some(
-    (key) => normalizeComparable(data.pet?.[key]) !== normalizeComparable(seed.pet?.[key]),
-  )
-  const ownerChanged = ownerKeys.some(
-    (key) => normalizeComparable(data.owner?.[key]) !== normalizeComparable(seed.owner?.[key]),
-  )
-  const resumeChanged =
-    normalizeComparable(clinicalResume) !== normalizeComparable(baselineResume)
-  const medsChanged =
-    normalizeComparable(medicationsText) !== normalizeComparable(baselineMedications)
-  return petChanged || ownerChanged || resumeChanged || medsChanged
 }

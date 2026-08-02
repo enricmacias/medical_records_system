@@ -46,7 +46,7 @@ def test_layout_hints_from_spanish_header() -> None:
     likely = hints["likely_fields"]
     assert likely.get("pet.name") == "MARLEY"
     assert "BEATRIZ" in (likely.get("owner.name") or "")
-    assert likely.get("pet.species") == "Canino"
+    assert likely.get("pet.species") == "Dog"
     assert "Labrador" in (likely.get("pet.breed") or "")
     assert likely.get("pet.microchip") == "941000024967769"
     assert likely.get("pet.date_of_birth") == "04/10/19"
@@ -69,7 +69,7 @@ def test_fake_llm_structures_spanish_historial() -> None:
     assert record.pet.name == "MARLEY"
     assert record.owner.name and "BEATRIZ" in record.owner.name
     assert record.pet.microchip == "941000024967769"
-    assert record.pet.species == "Canino"
+    assert record.pet.species == "Dog"
     assert record.clinical.history_entries
     assert record.clinical.diagnosis
     assert record.clinical.medications
@@ -106,7 +106,6 @@ def test_inline_compound_lines_in_layout_hints() -> None:
 
     hembra = build_layout_hints(INLINE_HEMBRA_DOC)["likely_fields"]
     assert hembra["pet.sex"] == "Hembra"
-    assert hembra["pet.weight"] == "0"
 
 
 def test_fake_llm_structures_inline_compound_headers() -> None:
@@ -116,4 +115,5 @@ def test_fake_llm_structures_inline_compound_headers() -> None:
 
     hembra = FakeLLMStructurer().structure(INLINE_HEMBRA_DOC)
     assert hembra.pet.sex == "Hembra"
-    assert hembra.pet.weight == "0"
+
+

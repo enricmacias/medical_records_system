@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   CLINICAL_RESUME_MAX,
   buildClinicalResume,
+  buildStructuredPetPayload,
+  displaySpecies,
   formatMedicationsList,
   isStructuredRecordDirty,
+  normalizeSpeciesForStorage,
   parseMedicationsList,
 } from '../lib/recordDisplay'
 
@@ -60,10 +63,40 @@ function TextArea({ label, value, onChange, rows = 3, maxLength, hint, editing }
   )
 }
 
+function SpeciesField({ value, onChange, editing }) {
+  if (!editing) {
+    return (
+      <div className="field field-readonly">
+        <span>Species</span>
+        <p className="field-value">{displaySpecies(value)}</p>
+      </div>
+    )
+  }
+  const selectValue = normalizeSpeciesForStorage(value) ?? ''
+  return (
+    <label className="field">
+      <span>Species</span>
+      <select value={selectValue} onChange={(e) => onChange(e.target.value || null)}>
+        <option value="">—</option>
+        <option value="Dog">Dog</option>
+        <option value="Cat">Cat</option>
+      </select>
+    </label>
+  )
+}
+
+function normalizePetForForm(pet) {
+  if (!pet) return {}
+  return {
+    ...pet,
+    species: normalizeSpeciesForStorage(pet.species) ?? pet.species ?? null,
+  }
+}
+
 export default function RecordForm({ initial, onSave, editing, onDirtyChange }) {
   const seed = useMemo(() => {
     const clone = structuredClone(initial)
-    clone.pet = clone.pet || {}
+    clone.pet = normalizePetForForm(clone.pet || {})
     clone.owner = clone.owner || {}
     clone.visit = clone.visit || {}
     clone.clinical = clone.clinical || {}
@@ -114,6 +147,7 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
     const resume = (clinicalResume || '').slice(0, CLINICAL_RESUME_MAX)
     const payload = {
       ...data,
+      pet: buildStructuredPetPayload(data.pet),
       clinical: {
         ...data.clinical,
         history: resume || null,
@@ -138,8 +172,7 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
             onChange={(v) => setPet('name', v)}
             editing={editing}
           />
-          <Field
-            label="Species"
+          <SpeciesField
             value={data.pet?.species}
             onChange={(v) => setPet('species', v)}
             editing={editing}
@@ -166,18 +199,6 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
             label="Microchip"
             value={data.pet?.microchip}
             onChange={(v) => setPet('microchip', v)}
-            editing={editing}
-          />
-          <Field
-            label="Weight"
-            value={data.pet?.weight}
-            onChange={(v) => setPet('weight', v)}
-            editing={editing}
-          />
-          <Field
-            label="Coat / color"
-            value={data.pet?.coat_color}
-            onChange={(v) => setPet('coat_color', v)}
             editing={editing}
           />
         </div>

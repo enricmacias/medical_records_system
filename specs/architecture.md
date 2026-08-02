@@ -12,7 +12,7 @@ A small modular monolith:
 ```text
 React ──HTTP──▶ FastAPI
                   ├── adapters/pdfplumber     → raw text
-                  ├── adapters/text_hints     → layout/visit/diagnosis + inline compound demographics
+                  ├── adapters/text_hints     → layout/visit/diagnosis + inline compound demographics + label-free species/breed
                   ├── adapters/ollama|fake    → optional LLM narrative / FakeLLM
                   └── services/storage        → SQLite + files
 ```
@@ -95,7 +95,7 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 - List page: records + upload control (upload returns quickly in async mode)
 - Detail page:
   - **Extracted text** toggle (hidden by default) shows `raw_text` when opened
-  - **Structured record** shown read-only by default (Pet, Owner, Clinical record resume, Medications list, Meta — see `specs/data-model.md` UI presentation)
+  - **Structured record** shown read-only by default (Pet — six fields with Dog/Cat species; Owner; Clinical record resume; Medications list; Meta — see `specs/data-model.md` UI presentation)
   - **Edit** enables fields; **Save corrections** persists via PATCH; **Cancel** exits edit mode (warns if there are unsaved changes)
   - Success notice after a successful save
   - **Poll `GET /api/records/{id}` ~every 1.5–2s while `status=processing`**
@@ -103,11 +103,11 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 
 ## Testing strategy
 
-- Backend unit: pdfplumber adapter; heuristics (including **inline compound demographics** in `tests/test_inline_demographics.py`); hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
+- Backend unit: pdfplumber adapter; heuristics (inline compound demographics in `tests/test_inline_demographics.py`; label-free species/breed in `tests/test_unlabeled_species_breed.py`); hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
 - Backend unit/service: async returns `processing`; sync completes; `process_record` failure path
 - Backend API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
-- Frontend unit (Vitest + Testing Library): clinical resume / medications display helpers; RecordForm read-only vs edit + save payload; RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice
-- Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF with inline compound header lines
+- Frontend unit (Vitest + Testing Library): clinical resume / medications display helpers; species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); RecordForm read-only vs edit + save payload (six pet fields); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice
+- Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF with inline compound header lines and/or label-free species/breed header lines
 
 ## Future extension points
 

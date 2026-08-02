@@ -76,9 +76,22 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 ## T10 — Inline compound demographics + tests (done)
 
-- [x] Parse inline compound header lines (`NAME - Nacimiento: DATE`, `Nombre …`, `Hembra Estado: … Peso: …`)
-- [x] Inline `Label: value` segments; weight without `kg`; standalone `Hembra`/`Macho`; mixed-case names
+- [x] Parse inline compound header lines (`NAME - Nacimiento: DATE`, `Nombre …`, `Hembra Estado: …` for sex)
+- [x] Inline `Label: value` segments; standalone `Hembra`/`Macho`; mixed-case names
 - [x] Compound-name sanitization when generic `Nombre`/`Name` captures the full line
 - [x] Inline hints override/repair earlier `pet.name` guesses
 - [x] `tests/test_inline_demographics.py` + updates to Spanish/performance integration tests
 - [x] Align specs (data-model extraction notes, scope, architecture, acceptance, tasks)
+
+## T11 — Label-free species/breed + Dog/Cat normalization (done)
+
+- [x] Infer species and breed from header lines without `Especie:` / `Raza:` labels (standalone species, dash compound, space-separated)
+- [x] Normalize species to canonical **`Dog`** / **`Cat`** in heuristics, LLM fallbacks, and UI display/save
+- [x] Feminine species tokens (`canina`, `felina`, `gata`) hint `Hembra` when sex not already set
+- [x] Breed plausibility guards (reject address fragments and demographic noise); labeled fields override unlabeled hints
+- [x] `tests/test_unlabeled_species_breed.py`; frontend species normalization tests; align specs (data-model, scope, architecture, acceptance, tasks)
+
+## T12 — Remove pet weight and coat_color (done)
+
+- [x] Drop `pet.weight` and `pet.coat_color` from domain schema, heuristics, LLM structurers, tests, and specs
+- [x] `Hembra Estado: … Peso: …` compound lines still set `pet.sex` only

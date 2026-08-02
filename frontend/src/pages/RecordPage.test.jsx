@@ -14,7 +14,14 @@ vi.mock('../api', () => ({
 import { getRecord, updateRecord } from '../api'
 
 const structuredData = {
-  pet: { name: 'Marley', species: 'Canino' },
+  pet: {
+    name: 'Marley',
+    species: 'Canino',
+    breed: 'Labrador',
+    sex: 'M',
+    date_of_birth: '04/10/19',
+    microchip: '941000024967769',
+  },
   owner: { name: 'Beatriz', phone: null, email: null, address: null },
   visit: {},
   clinical: {
@@ -83,6 +90,8 @@ describe('RecordPage', () => {
     renderPage()
 
     const panel = await structuredPanel()
+    expect(within(panel).getByText('Marley')).toBeInTheDocument()
+    expect(within(panel).getByText('Dog')).toBeInTheDocument()
     expect(within(panel).getByText('Visit summary')).toBeInTheDocument()
     expect(within(panel).queryByRole('button', { name: 'Save corrections' })).not.toBeInTheDocument()
     expect(within(panel).queryByRole('textbox')).not.toBeInTheDocument()

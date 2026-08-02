@@ -13,7 +13,6 @@ _LABEL_HINTS = {
     "sex": [r"sexo", r"sex", r"g[eé]nero"],
     "dob": [r"f/?nto", r"f\.?\s*nac", r"fecha\s+de\s+nacimiento", r"date\s+of\s+birth", r"dob"],
     "microchip": [r"n[ºo°]?\s*chip", r"microchip", r"chip"],
-    "coat": [r"capa", r"coat", r"color"],
     "owner": [r"cliente", r"propietario", r"owner", r"tutor"],
 }
 
@@ -59,10 +58,10 @@ _MEDICATION_NAMES = [
 ]
 
 _INLINE_LABEL_VALUE = re.compile(
-    r"(?i)(nacimiento|f/?nto|f\.?\s*nac(?:imiento)?|peso|pv|weight|sexo|sex|especie|species|raza|breed|chip|microchip)"
+    r"(?i)(nacimiento|f/?nto|f\.?\s*nac(?:imiento)?|sexo|sex|especie|species|raza|breed|chip|microchip)"
     r"\s*:\s*"
     r"([^:]+?)"
-    r"(?=\s+(?:nacimiento|f/?nto|f\.?\s*nac(?:imiento)?|peso|pv|weight|sexo|sex|especie|species|raza|breed|estado|chip|microchip)\s*:|$)",
+    r"(?=\s+(?:nacimiento|f/?nto|f\.?\s*nac(?:imiento)?|sexo|sex|especie|species|raza|breed|estado|chip|microchip)\s*:|$)",
 )
 
 _INLINE_LABEL_TO_FIELD = {
@@ -73,9 +72,6 @@ _INLINE_LABEL_TO_FIELD = {
     "fechadenacimiento": "pet.date_of_birth",
     "dateofbirth": "pet.date_of_birth",
     "dob": "pet.date_of_birth",
-    "peso": "pet.weight",
-    "pv": "pet.weight",
-    "weight": "pet.weight",
     "sexo": "pet.sex",
     "sex": "pet.sex",
     "especie": "pet.species",
@@ -103,6 +99,155 @@ _HEMBRA_ESTADO_PESO_LINE = re.compile(
 )
 
 _DATE_PATTERN = re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}")
+
+_DOG_SPECIES = re.compile(r"(?i)(canino|canina|canine|perro|perros|dog|cão)")
+_CAT_SPECIES = re.compile(r"(?i)(felino|felina|feline|gato|gatos|cat|gata)")
+
+_SPECIES_TOKENS = (
+    "canino",
+    "canina",
+    "canine",
+    "perro",
+    "felino",
+    "felina",
+    "feline",
+    "gato",
+    "dog",
+    "cat",
+)
+_SPECIES_TOKEN_PATTERN = "|".join(_SPECIES_TOKENS)
+
+_SPECIES_BREED_LINE = re.compile(
+    rf"(?im)^(?P<species>{_SPECIES_TOKEN_PATTERN})\s*[-–—]\s*(?P<breed>.+)$",
+)
+_SPECIES_BREED_SPACE_LINE = re.compile(
+    rf"(?im)^(?P<species>{_SPECIES_TOKEN_PATTERN})\s+(?P<breed>[A-Za-zÁÉÍÓÚÜÑ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ \-']{{2,}})$",
+)
+_STANDALONE_SPECIES_LINE = re.compile(
+    rf"(?im)^(?P<species>{_SPECIES_TOKEN_PATTERN})\s*[.:]?\s*$",
+)
+_FEMALE_SPECIES_FORMS = frozenset({"canina", "felina", "gata"})
+
+
+def normalize_species_dog_cat(value: str | None) -> str | None:
+    """Map Spanish/English species labels to canonical Dog or Cat."""
+    if value is None or not str(value).strip():
+        return None
+    text = str(value).strip()
+    lower = text.lower()
+    if lower in ("dog", "d"):
+        return "Dog"
+    if lower in ("cat", "c"):
+        return "Cat"
+    if _DOG_SPECIES.search(lower):
+        return "Dog"
+    if _CAT_SPECIES.search(lower):
+        return "Cat"
+    return None
+
+
+def _is_plausible_breed(text: str) -> bool:
+    """Reject address fragments and compound demographic tails mistaken as breed."""
+    candidate = text.strip()
+    if not candidate or len(candidate) < 2:
+        return False
+    if re.match(r"(?i)c/\s", candidate):
+        return False
+    if _DATE_PATTERN.search(candidate):
+        return False
+    if re.search(r"(?i)nacimiento|microchip|historial|cliente|propietario", candidate):
+        return False
+    return True
+
+
+def _normalize_breed_value(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip())
+
+
+def _sex_hint_from_species_token(token: str) -> str | None:
+    if token.lower() in _FEMALE_SPECIES_FORMS:
+        return "Hembra"
+    return None
+
+
+def extract_unlabeled_species_breed_hints(head: str) -> dict[str, str]:
+    """Infer species and breed from header lines without Especie/Raza labels."""
+    found: dict[str, str] = {}
+    for raw_line in head.splitlines()[:80]:
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        compound = _SPECIES_BREED_LINE.match(line)
+        if compound:
+            species_token = compound.group("species")
+            breed_part = _normalize_breed_value(compound.group("breed"))
+            species = normalize_species_dog_cat(species_token)
+            if species:
+                found.setdefault("pet.species", species)
+            if _is_plausible_breed(breed_part):
+                found.setdefault("pet.breed", breed_part)
+            sex_hint = _sex_hint_from_species_token(species_token)
+            if sex_hint:
+                found.setdefault("pet.sex", sex_hint)
+            continue
+
+        space_sep = _SPECIES_BREED_SPACE_LINE.match(line)
+        if space_sep:
+            species_token = space_sep.group("species")
+            breed_part = _normalize_breed_value(space_sep.group("breed"))
+            species = normalize_species_dog_cat(species_token)
+            if species and _is_plausible_breed(breed_part):
+                found.setdefault("pet.species", species)
+                found.setdefault("pet.breed", breed_part)
+                sex_hint = _sex_hint_from_species_token(species_token)
+                if sex_hint:
+                    found.setdefault("pet.sex", sex_hint)
+            continue
+
+        standalone = _STANDALONE_SPECIES_LINE.match(line)
+        if standalone:
+            species_token = standalone.group("species")
+            species = normalize_species_dog_cat(species_token)
+            if species:
+                found.setdefault("pet.species", species)
+            sex_hint = _sex_hint_from_species_token(species_token)
+            if sex_hint:
+                found.setdefault("pet.sex", sex_hint)
+
+    return found
+
+
+def infer_species_from_text(text: str) -> str | None:
+    """Infer Dog vs Cat from header/body text when species field is missing or ambiguous."""
+    sample = text[:5000]
+    labeled = re.search(
+        r"(?i)(?:especie|species)\s*:?\s*(canino|canina|felino|felina|perro|gato|dog|cat|canine|feline)",
+        sample,
+    )
+    if labeled:
+        return normalize_species_dog_cat(labeled.group(1))
+
+    dog = bool(_DOG_SPECIES.search(sample))
+    cat = bool(_CAT_SPECIES.search(sample))
+    if dog and not cat:
+        return "Dog"
+    if cat and not dog:
+        return "Cat"
+    return None
+
+
+def apply_species_normalization(hints: dict[str, Any], head: str) -> None:
+    likely = hints.get("likely_fields") or {}
+    raw = likely.get("pet.species")
+    normalized = normalize_species_dog_cat(raw)
+    if normalized:
+        likely["pet.species"] = normalized
+    else:
+        inferred = infer_species_from_text(head)
+        if inferred:
+            likely["pet.species"] = inferred
+    hints["likely_fields"] = likely
 
 
 def normalize_extracted_text(text: str) -> str:
@@ -249,16 +394,6 @@ def _normalize_inline_label(label: str) -> str:
     return compact
 
 
-def _normalize_weight_value(raw: str) -> str:
-    value = raw.strip().replace(",", ".")
-    match = re.match(r"^([\d.]+)\s*(kg|g)?$", value, flags=re.I)
-    if not match:
-        return value
-    number = match.group(1)
-    unit = (match.group(2) or "").lower()
-    return f"{number}{unit}" if unit else number
-
-
 def _normalize_inline_value(field: str, raw: str) -> str | None:
     value = raw.strip()
     if not value:
@@ -266,8 +401,6 @@ def _normalize_inline_value(field: str, raw: str) -> str | None:
     if field == "pet.date_of_birth":
         date_match = _DATE_PATTERN.search(value)
         return date_match.group(0) if date_match else None
-    if field == "pet.weight":
-        return _normalize_weight_value(value)
     if field == "pet.microchip":
         chip_match = re.search(r"\d{9,20}", value)
         return chip_match.group(0) if chip_match else None
@@ -327,8 +460,6 @@ def extract_inline_demographic_hints(head: str) -> dict[str, str]:
         sex_estado_peso = _HEMBRA_ESTADO_PESO_LINE.match(line)
         if sex_estado_peso:
             found.setdefault("pet.sex", sex_estado_peso.group(1).strip())
-            weight = _normalize_weight_value(sex_estado_peso.group(3))
-            found.setdefault("pet.weight", weight)
             continue
 
         standalone_sex = _STANDALONE_SEX_LINE.match(line)
@@ -364,24 +495,6 @@ def build_layout_hints(text: str) -> dict[str, Any]:
     chip = re.search(r"(?:chip|microchip)\D{0,12}(\d{9,20})", joined, flags=re.I)
     if chip:
         hints["likely_fields"]["pet.microchip"] = chip.group(1)
-
-    weights = re.findall(
-        r"(?i)(?:peso|pv|weight)\s*:\s*([\d.,]+)\s*(kg|g)?",
-        text,
-    )
-    if weights:
-        last = weights[-1]
-        number = str(last[0]).replace(",", ".")
-        unit = (last[1] or "").lower()
-        hints["likely_fields"]["pet.weight"] = f"{number}{unit}" if unit else number
-    if "pet.weight" not in hints["likely_fields"]:
-        kg_weights = re.findall(
-            r"(?:peso|pv|weight)?\s*[:=]?\s*(\d{1,2}(?:[.,]\d{1,2})?\s*kg)",
-            text,
-            flags=re.I,
-        )
-        if kg_weights:
-            hints["likely_fields"]["pet.weight"] = kg_weights[-1].replace(",", ".")
 
     clinic = extract_clinic_name(text)
     if clinic:
@@ -440,7 +553,6 @@ def build_layout_hints(text: str) -> dict[str, Any]:
         "sex": "pet.sex",
         "dob": "pet.date_of_birth",
         "microchip": "pet.microchip",
-        "coat": "pet.coat_color",
         "owner": "owner.name",
     }
     for key, labels in _LABEL_HINTS.items():
@@ -460,7 +572,12 @@ def build_layout_hints(text: str) -> dict[str, Any]:
     for key, value in inline.items():
         hints["likely_fields"][key] = value
 
+    for key, value in extract_unlabeled_species_breed_hints(head).items():
+        hints["likely_fields"].setdefault(key, value)
+
     _sanitize_compound_pet_name(hints["likely_fields"])
+
+    apply_species_normalization(hints, head)
 
     return hints
 

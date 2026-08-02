@@ -12,8 +12,6 @@ const sampleRecord = {
     sex: 'M',
     date_of_birth: '04/10/19',
     microchip: '941000024967769',
-    weight: '29.6kg',
-    coat_color: null,
   },
   owner: {
     name: 'Beatriz Abarca',
@@ -38,7 +36,7 @@ const sampleRecord = {
 }
 
 describe('RecordForm', () => {
-  it('renders a read-only structured view by default', () => {
+  it('renders pet identity fields and other structured sections read-only by default', () => {
     render(
       <RecordForm
         initial={sampleRecord}
@@ -48,6 +46,9 @@ describe('RecordForm', () => {
       />,
     )
 
+    expect(screen.getByText('Pet')).toBeInTheDocument()
+    expect(screen.getByText('Marley')).toBeInTheDocument()
+    expect(screen.getByText('Dog')).toBeInTheDocument()
     expect(screen.getByText('Clinical record')).toBeInTheDocument()
     expect(screen.getByText(/08\/12\/19 — Emergency visit/)).toBeInTheDocument()
     expect(screen.getByText('Tobradex')).toBeInTheDocument()
@@ -71,6 +72,42 @@ describe('RecordForm', () => {
     await user.clear(nameInputs[0])
     await user.type(nameInputs[0], 'Buddy')
     expect(onDirtyChange).toHaveBeenCalledWith(true)
+  })
+
+  it('saves the six structured pet fields on save', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+
+    render(
+      <div>
+        <button type="submit" form={STRUCTURED_FORM_ID}>
+          Save corrections
+        </button>
+        <RecordForm
+          initial={sampleRecord}
+          onSave={onSave}
+          editing={true}
+          onDirtyChange={vi.fn()}
+        />
+      </div>,
+    )
+
+    const breed = screen.getByLabelText('Breed')
+    await user.clear(breed)
+    await user.type(breed, 'Golden Retriever')
+
+    await user.click(screen.getByRole('button', { name: 'Save corrections' }))
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    const payload = onSave.mock.calls[0][0]
+    expect(payload.pet).toEqual({
+      name: 'Marley',
+      species: 'Dog',
+      breed: 'Golden Retriever',
+      sex: 'M',
+      date_of_birth: '04/10/19',
+      microchip: '941000024967769',
+    })
   })
 
   it('saves clinical resume and medications list from the associated form', async () => {

@@ -13,7 +13,7 @@ We need free, local structuring into a fixed JSON schema, without cloud API cost
 ## Decision
 
 1. Abstract structuring behind `MedicalRecordStructurer` with **Ollama** and **Fake** implementations.
-2. Run **layout/visit heuristics first** (Spanish/English headers, chip/weight, dated visit blocks, diagnosis/medication hints).
+2. Run **layout/visit heuristics first** (Spanish/English headers, chip, inline compound demographics, label-free species/breed header patterns, dated visit blocks, diagnosis/medication hints).
 3. Default **`LLM_CLINICAL_MODE=hybrid`**:
    - Skip demographics LLM when `pet.name` is already hinted.
    - Skip clinical LLM when clinical heuristics are sufficient (visit blocks and/or diagnosis/med hints).
@@ -27,5 +27,5 @@ We need free, local structuring into a fixed JSON schema, without cloud API cost
 - Multi-visit Spanish clinic PDFs often complete quickly without a clinical LLM call
 - JSON shape remains validated by Pydantic; humans edit in the UI
 - Reviewers can use `LLM_PROVIDER=fake` or hybrid without a GPU
-- Heuristics are template-biased (stronger on ES/EN clinic headers); unusual formats still benefit from LLM mode when hardware allows
+- Heuristics are template-biased (stronger on ES/EN clinic headers, including label-free species/breed lines); unusual formats still benefit from LLM mode when hardware allows
 - “Ollama unavailable” is not always a hard failure under hybrid/heuristic modes

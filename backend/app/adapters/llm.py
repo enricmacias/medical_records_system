@@ -14,6 +14,8 @@ from app.adapters.text_hints import (
     build_layout_hints,
     clinical_focus_text,
     normalize_extracted_text,
+    normalize_species_dog_cat,
+    infer_species_from_text,
     split_for_long_document,
 )
 from app.domain.models import (
@@ -278,13 +280,12 @@ class OllamaStructurer(MedicalRecordStructurer):
         return DemographicsBundle(
             pet=PetInfo(
                 name=likely.get("pet.name"),
-                species=likely.get("pet.species"),
+                species=normalize_species_dog_cat(likely.get("pet.species"))
+                or likely.get("pet.species"),
                 breed=likely.get("pet.breed"),
                 sex=likely.get("pet.sex"),
                 date_of_birth=likely.get("pet.date_of_birth"),
                 microchip=likely.get("pet.microchip"),
-                weight=likely.get("pet.weight"),
-                coat_color=likely.get("pet.coat_color"),
             ),
             owner=OwnerInfo(
                 name=likely.get("owner.name"),
@@ -348,7 +349,6 @@ class OllamaStructurer(MedicalRecordStructurer):
             "pet.sex": ("pet", "sex"),
             "pet.date_of_birth": ("pet", "date_of_birth"),
             "pet.microchip": ("pet", "microchip"),
-            "pet.weight": ("pet", "weight"),
             "owner.name": ("owner", "name"),
             "owner.address": ("owner", "address"),
             "visit.clinic_name": ("visit", "clinic_name"),
@@ -413,6 +413,12 @@ class OllamaStructurer(MedicalRecordStructurer):
                 missing.append(path)
         data["meta"]["missing_fields"] = missing
 
+        species = normalize_species_dog_cat(data["pet"].get("species"))
+        if not species:
+            species = normalize_species_dog_cat(likely.get("pet.species"))
+        if species:
+            data["pet"]["species"] = species
+
         return MedicalRecord.model_validate(data)
 
 
@@ -446,12 +452,11 @@ class FakeLLMStructurer(MedicalRecordStructurer):
             return MedicalRecord(
                 pet=PetInfo(
                     name=likely.get("pet.name") or "MARLEY",
-                    species=likely.get("pet.species") or "Canino",
+                    species=normalize_species_dog_cat(likely.get("pet.species")) or "Dog",
                     breed=likely.get("pet.breed") or "Labrador Retriever",
                     sex=likely.get("pet.sex") or "M",
                     date_of_birth=likely.get("pet.date_of_birth") or "04/10/19",
                     microchip=likely.get("pet.microchip") or "941000024967769",
-                    weight=likely.get("pet.weight") or "29.6kg",
                 ),
                 owner=OwnerInfo(
                     name=likely.get("owner.name") or "BEATRIZ ABARCA",
@@ -510,9 +515,13 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                 if "buddy" in lower
                 else likely.get("pet.name") or "Unknown Pet",
                 species=(
-                    "Canine"
-                    if ("dog" in lower or "canine" in lower)
-                    else ("Canino" if "canino" in lower else likely.get("pet.species"))
+                    "Dog"
+                    if ("dog" in lower or "canine" in lower or "canino" in lower)
+                    else (
+                        "Cat"
+                        if ("cat" in lower or "feline" in lower or "felino" in lower)
+                        else normalize_species_dog_cat(likely.get("pet.species"))
+                    )
                 ),
                 breed="Labrador Retriever"
                 if "labrador" in lower
@@ -522,7 +531,6 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                 if "2020-03-15" in text
                 else likely.get("pet.date_of_birth"),
                 microchip=likely.get("pet.microchip"),
-                weight=likely.get("pet.weight"),
             ),
             owner=OwnerInfo(
                 name="Jane Doe"

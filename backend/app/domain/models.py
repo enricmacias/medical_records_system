@@ -26,7 +26,7 @@ class PetInfo(BaseModel):
     )
     species: str | None = Field(
         default=None,
-        description="Species / Especie, e.g. Canino, Felino, dog, cat.",
+        description="Species / Especie — canonical Dog or Cat when normalized; e.g. Canino, Felino.",
     )
     breed: str | None = Field(default=None, description="Breed / Raza.")
     sex: str | None = Field(
@@ -38,13 +38,6 @@ class PetInfo(BaseModel):
     )
     microchip: str | None = Field(
         default=None, description="Microchip number / Nº Chip if present."
-    )
-    weight: str | None = Field(
-        default=None,
-        description="Most recent weight with unit if available, e.g. 29.6kg.",
-    )
-    coat_color: str | None = Field(
-        default=None, description="Coat / Capa / color if present."
     )
 
 

@@ -18,7 +18,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 
 1. **Spec-anchored SDD** — behavior lives in `specs/` before code.
 2. **Adapter interfaces** — PDF and LLM can be swapped without API changes.
-3. **Hybrid extraction** — heuristics first; optional LLM for weak cases; timeout falls back to heuristics.
+3. **Hybrid extraction** — heuristics first (inline compound demographics, label-free species/breed, visit blocks); optional LLM for weak cases; timeout falls back to heuristics; species normalized to Dog/Cat when inferable.
 4. **Async by default** — upload returns `processing`; UI polls until `completed`/`failed`.
 5. **Human-in-the-loop** — structured output is editable; vets correct mistakes.
 6. **Fake LLM** — tests and demos work without GPU/model download.

@@ -53,7 +53,6 @@ History
 Routine check.
 """
 
-
 class TestSplitNameAndNacimiento:
     def test_splits_dash_nacimiento_pattern(self) -> None:
         name, dob = _split_name_and_nacimiento(COMPOUND_DASH)
