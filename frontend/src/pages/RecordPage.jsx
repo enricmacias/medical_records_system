@@ -153,7 +153,7 @@ export default function RecordPage() {
             {showExtractedText ? t('record.hideExtractedText') : t('record.extractedText')}
           </button>
           <a className="ghost-button" href={fileUrl(record.id)} target="_blank" rel="noreferrer">
-            {t('record.downloadPdf')}
+            {t('record.downloadFile')}
           </a>
         </div>
       </div>

@@ -47,11 +47,11 @@ export default function HomePage() {
         <label className="upload-button">
           <input
             type="file"
-            accept="application/pdf,.pdf"
+            accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
             onChange={onFileChange}
             disabled={uploading}
           />
-          {uploading ? t('home.uploading') : t('home.choosePdf')}
+          {uploading ? t('home.uploading') : t('home.chooseFile')}
         </label>
         {health && (
           <p className="health">

@@ -3,8 +3,8 @@
 ## In scope
 
 - Single-user web app (no authentication)
-- PDF upload only (text-based / digitally generated PDFs)
-- Text extraction with **pdfplumber**
+- PDF and Word (.docx) upload (text-based / digitally generated documents)
+- Text extraction with **pdfplumber** (PDF) and **python-docx** (Word .docx)
 - Structured extraction via a **hybrid pipeline**:
   - layout/visit **heuristics** (Spanish/English clinic headers — including **inline compound lines** such as `ALYA - Nacimiento: DATE` and `Hembra Estado: …` (sex only); **label-free species/breed lines** such as `CANINA - YORKSHIRE TERRIER` or standalone `Canino` without `Especie:` / `Raza:` labels; dated historial blocks; diagnosis/med hints)
   - optional **Ollama** structured outputs (`qwen2.5:7b` by default) for demographics, clinical narrative (weak hints or `llm` mode), and clinical summary polish (strong hints or `llm` mode) per `LLM_CLINICAL_MODE`
@@ -18,14 +18,15 @@
 
 ## Out of scope (v1)
 
-- Word, images, and other non-PDF formats
-- OCR for scanned/image-only PDFs
+- Legacy binary Word (**`.doc`** — only **`.docx`** is supported)
+- Images and other non-PDF/non-docx formats
+- OCR for scanned/image-only PDFs and image-only content inside Word documents
 - Multi-user auth, roles, clinic tenancy
 - Dedicated job queues / workers (Redis, Celery, RQ, etc.) — in-process `BackgroundTasks` only
 - Cloud LLM APIs (paid or remote)
-- PDF visual page viewer (optional later; text preview is enough)
+- **Additional site UI languages** beyond English and Spanish (v1 toggle is EN/ES only; document extraction may detect other ISO codes best-effort)
+- **Document page preview** (PDF or Word visual viewer; text preview is enough for v1)
 - Real-time collaboration / websockets (v1 uses HTTP polling with `processing` percent/messages for user feedback)
-- **Additional site UI languages** beyond English and Spanish (v1 toggle is EN/ES only; PDF extraction may detect other ISO codes best-effort)
 - Production hardening (rate limits, audit logs, HIPAA/GDPR compliance program)
 
 ## Constraints

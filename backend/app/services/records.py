@@ -8,7 +8,11 @@ from typing import Callable
 from fastapi import UploadFile
 
 from app.adapters.llm import MedicalRecordStructurer
-from app.adapters.pdf_extractor import PdfTextExtractor
+from app.adapters.document_extractor import (
+    CompositeDocumentExtractor,
+    DocumentTextExtractor,
+    resolve_upload_format,
+)
 from app.domain.models import MedicalRecord, RecordResponse, RecordStatus, new_record_id
 from app.domain.processing import ProcessingProgress
 from app.services.store import RecordStore
@@ -22,7 +26,7 @@ class RecordService:
         self,
         *,
         store: RecordStore,
-        extractor: PdfTextExtractor,
+        extractor: DocumentTextExtractor,
         structurer: MedicalRecordStructurer,
         upload_dir: Path,
         max_upload_bytes: int,
@@ -38,10 +42,12 @@ class RecordService:
 
     async def create_from_upload(self, file: UploadFile) -> RecordResponse:
         filename = file.filename or "upload.pdf"
-        content_type = file.content_type or "application/pdf"
+        content_type = file.content_type or ""
 
-        if not filename.lower().endswith(".pdf") and content_type != "application/pdf":
-            raise ValueError("Only PDF files are supported")
+        try:
+            extension, canonical_type = resolve_upload_format(filename, content_type)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
         data = await file.read()
         if not data:
@@ -52,7 +58,7 @@ class RecordService:
             )
 
         record_id = new_record_id()
-        stored_name = f"{record_id}.pdf"
+        stored_name = f"{record_id}{extension}"
         stored_path = self.upload_dir / stored_name
         stored_path.write_bytes(data)
 
@@ -60,7 +66,7 @@ class RecordService:
             record_id=record_id,
             original_filename=filename,
             stored_path=str(stored_path),
-            content_type="application/pdf",
+            content_type=canonical_type,
             status=RecordStatus.processing,
         )
 
@@ -77,7 +83,7 @@ class RecordService:
                 progress=ProcessingProgress(
                     percent=5,
                     step="starting",
-                    message="Starting to process your PDF…",
+                    message="Starting to process your document…",
                 ),
             )
             stored_path = Path(self.store.get_stored_path(record_id))
@@ -88,7 +94,7 @@ class RecordService:
                 progress=ProcessingProgress(
                     percent=15,
                     step="extracting_text",
-                    message="Reading text from your PDF…",
+                    message="Reading text from your document…",
                 ),
             )
 

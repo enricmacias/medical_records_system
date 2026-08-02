@@ -28,7 +28,7 @@ from app.domain.models import MedicalRecord, PetInfo
 from app.domain.processing import ProcessingProgress
 from app.services.records import RecordService
 from app.services.store import RecordStore
-from tests.test_api import _make_sample_pdf_bytes
+from tests.sample_documents import make_sample_pdf_bytes
 from tests.test_spanish_extraction import SPANISH_HEADER
 from tests.test_inline_demographics import INLINE_NOMBRE_DOC
 
@@ -227,7 +227,7 @@ def test_record_service_async_returns_processing(tmp_path: Path) -> None:
         max_upload_bytes=10_000_000,
         processing_mode="async",
     )
-    pdf_bytes = _make_sample_pdf_bytes()
+    pdf_bytes = make_sample_pdf_bytes()
     upload = UploadFile(filename="buddy.pdf", file=BytesIO(pdf_bytes))
     record = asyncio.run(service.create_from_upload(upload))
     assert record.status.value == "processing"
@@ -249,7 +249,7 @@ def test_record_service_sync_processes_immediately(tmp_path: Path) -> None:
         max_upload_bytes=10_000_000,
         processing_mode="sync",
     )
-    pdf_bytes = _make_sample_pdf_bytes()
+    pdf_bytes = make_sample_pdf_bytes()
     upload = UploadFile(filename="buddy.pdf", file=BytesIO(pdf_bytes))
     record = asyncio.run(service.create_from_upload(upload))
     assert record.status.value == "completed"
@@ -271,7 +271,7 @@ def test_process_record_marks_failed_on_structurer_error(tmp_path: Path) -> None
         max_upload_bytes=10_000_000,
         processing_mode="async",
     )
-    pdf_bytes = _make_sample_pdf_bytes()
+    pdf_bytes = make_sample_pdf_bytes()
     upload = UploadFile(filename="buddy.pdf", file=BytesIO(pdf_bytes))
     created = asyncio.run(service.create_from_upload(upload))
     failed = service.process_record(created.id)
@@ -303,7 +303,7 @@ def test_api_async_mode_returns_processing_then_completes(
     with TestClient(app) as client:
         response = client.post(
             "/api/records",
-            files={"file": ("buddy.pdf", _make_sample_pdf_bytes(), "application/pdf")},
+            files={"file": ("buddy.pdf", make_sample_pdf_bytes(), "application/pdf")},
         )
         assert response.status_code == 201
         body = response.json()
@@ -387,7 +387,7 @@ def test_process_record_passes_progress_callbacks_to_structurer(tmp_path: Path) 
         max_upload_bytes=10_000_000,
         processing_mode="async",
     )
-    pdf_bytes = _make_sample_pdf_bytes()
+    pdf_bytes = make_sample_pdf_bytes()
     upload = UploadFile(filename="buddy.pdf", file=BytesIO(pdf_bytes))
     created = asyncio.run(service.create_from_upload(upload))
     result = service.process_record(created.id)

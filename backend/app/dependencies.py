@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from app.adapters.llm import MedicalRecordStructurer, build_structurer
-from app.adapters.pdf_extractor import PdfTextExtractor, PdfplumberExtractor
+from app.adapters.document_extractor import CompositeDocumentExtractor, DocumentTextExtractor
 from app.config import Settings, get_settings
 from app.services.records import RecordService
 from app.services.store import RecordStore
@@ -17,8 +17,8 @@ def get_store() -> RecordStore:
 
 
 @lru_cache
-def get_extractor() -> PdfTextExtractor:
-    return PdfplumberExtractor()
+def get_extractor() -> DocumentTextExtractor:
+    return CompositeDocumentExtractor()
 
 
 @lru_cache

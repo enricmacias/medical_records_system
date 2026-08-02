@@ -7,30 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-
-def _make_sample_pdf_bytes() -> bytes:
-    from fpdf import FPDF
-
-    content = """Sunshine Vet Clinic
-Visit date: 2024-06-10
-Veterinarian: Dr. Smith
-Pet: Buddy, Canine, Labrador Retriever, Male
-Date of birth: 2020-03-15
-Owner: Jane Doe, +1-555-0100, jane@example.com
-Chief complaint: Left ear scratching and head shaking
-History: Symptoms for 3 days
-Examination: Mild erythema in left ear canal
-Diagnosis: Otitis externa
-Treatment: Topical ear medication
-Medication: Otomax, 4 drops, Twice daily for 7 days
-Notes: Follow up in 1 week
-"""
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=12)
-    for line in content.splitlines():
-        pdf.cell(0, 8, line, new_x="LMARGIN", new_y="NEXT")
-    return bytes(pdf.output())
+from tests.sample_documents import make_sample_docx_bytes, make_sample_pdf_bytes
 
 
 @pytest.fixture()
@@ -71,7 +48,7 @@ def test_health(client: TestClient) -> None:
 
 
 def test_upload_and_structure(client: TestClient) -> None:
-    pdf_bytes = _make_sample_pdf_bytes()
+    pdf_bytes = make_sample_pdf_bytes()
     response = client.post(
         "/api/records",
         files={"file": ("buddy.pdf", pdf_bytes, "application/pdf")},
@@ -100,7 +77,35 @@ def test_upload_and_structure(client: TestClient) -> None:
     assert file_resp.headers["content-type"].startswith("application/pdf")
 
 
-def test_reject_non_pdf(client: TestClient) -> None:
+def test_upload_docx_and_structure(client: TestClient) -> None:
+    docx_bytes = make_sample_docx_bytes()
+    response = client.post(
+        "/api/records",
+        files={
+            "file": (
+                "buddy.docx",
+                docx_bytes,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["content_type"] == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert "Buddy" in (body["raw_text"] or "")
+    assert body["structured_data"]["pet"]["name"] == "Buddy"
+
+    file_resp = client.get(f"/api/records/{body['id']}/file")
+    assert file_resp.status_code == 200
+    assert file_resp.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+
+def test_reject_unsupported_format(client: TestClient) -> None:
     response = client.post(
         "/api/records",
         files={"file": ("notes.txt", b"hello", "text/plain")},
@@ -108,8 +113,17 @@ def test_reject_non_pdf(client: TestClient) -> None:
     assert response.status_code == 400
 
 
+def test_reject_legacy_doc(client: TestClient) -> None:
+    response = client.post(
+        "/api/records",
+        files={"file": ("legacy.doc", b"hello", "application/msword")},
+    )
+    assert response.status_code == 400
+    assert "docx" in response.json()["detail"].lower()
+
+
 def test_patch_structured_data(client: TestClient) -> None:
-    pdf_bytes = _make_sample_pdf_bytes()
+    pdf_bytes = make_sample_pdf_bytes()
     created = client.post(
         "/api/records",
         files={"file": ("buddy.pdf", pdf_bytes, "application/pdf")},
@@ -129,7 +143,7 @@ def test_pdfplumber_extractor(tmp_path: Path) -> None:
     from app.adapters.pdf_extractor import PdfplumberExtractor
 
     pdf_path = tmp_path / "sample.pdf"
-    pdf_path.write_bytes(_make_sample_pdf_bytes())
+    pdf_path.write_bytes(make_sample_pdf_bytes())
     text = PdfplumberExtractor().extract(pdf_path)
     assert "Buddy" in text
     assert "Otitis" in text

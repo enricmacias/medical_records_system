@@ -6,7 +6,7 @@ Accepted (amended)
 
 ## Context
 
-Veterinary PDFs vary widely across clinics, languages, and templates. Pure rule-based parsing will not generalize to every layout, but calling a local 7B LLM on full multi-visit historiales is slow and often times out behind gateways.
+Veterinary medical records arrive as **PDF or Word (.docx)** and vary widely across clinics, languages, and templates. Pure rule-based parsing will not generalize to every layout, but calling a local 7B LLM on full multi-visit historiales is slow and often times out behind gateways.
 
 We need free, local structuring into a fixed JSON schema, without cloud API costs or data leaving the machine, while remaining usable on modest hardware.
 
@@ -26,7 +26,7 @@ We need free, local structuring into a fixed JSON schema, without cloud API cost
 
 ## Consequences
 
-- Multi-visit Spanish clinic PDFs often complete with heuristic clinical summary without narrative LLM; hybrid may still call Ollama for summary polish when hints are strong
+- Multi-visit Spanish clinic documents (PDF or .docx) often complete with heuristic clinical summary without narrative LLM; hybrid may still call Ollama for summary polish when hints are strong. Structuring consumes plain `raw_text` regardless of source format.
 - JSON shape remains validated by Pydantic; humans edit **pet** (six fields) and **owner** in the UI; clinical summary is read-only in v1
 - Reviewers can use `LLM_PROVIDER=fake` or hybrid without a GPU (FakeLLM produces heuristic summary)
 - Heuristics are template-biased (stronger on ES/EN clinic headers, including label-free species/breed lines); unusual formats still benefit from `llm` mode when hardware allows

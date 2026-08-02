@@ -97,6 +97,6 @@ def download_file(
 
     return FileResponse(
         path,
-        media_type="application/pdf",
+        media_type=record.content_type,
         filename=record.original_filename,
     )

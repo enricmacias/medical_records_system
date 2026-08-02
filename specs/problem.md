@@ -1,21 +1,21 @@
 # Problem
 
-Veterinarians need to review pet medical records that arrive in inconsistent PDF formats from different clinics, languages, and templates. Manually reading and re-entering this information is slow and error-prone.
+Veterinarians need to review pet medical records that arrive in inconsistent PDF and Word formats from different clinics, languages, and templates. Manually reading and re-entering this information is slow and error-prone.
 
 ## Goal
 
 Provide a Lean MVP that lets a veterinarian:
 
-1. Upload a pet medical record as a **PDF**
+1. Upload a pet medical record as a **PDF** or **Word document (.docx)**
 2. Automatically extract the document text
 3. Structure the most relevant clinical information into a **standardized JSON** shape (heuristics ± local LLM), including a human-readable **clinical summary** (`clinical.history`) for quick case review
-4. Review structured data in a clear web UI (read-only by default) and **edit** pet and owner fields when needed (clinical summary is extraction-generated and read-only in v1). UI available in **English or Spanish** (site toggle); independent of PDF language.
+4. Review structured data in a clear web UI (read-only by default) and **edit** pet and owner fields when needed (clinical summary is extraction-generated and read-only in v1). UI available in **English or Spanish** (site toggle); independent of document language.
 
 ## Non-goals (this exercise)
 
 - Diagnosing or giving medical advice
 - Replacing a full practice-management system
-- Supporting every document format on day one
+- Supporting every document format on day one (v1 accepts **PDF** and **.docx** only; legacy **.doc** and other formats are explicitly out of scope)
 
 ## Success for this exercise
 

@@ -17,7 +17,7 @@ from app.domain.models import ClinicalInfo, MedicalRecord, PetInfo, RecordStatus
 from app.domain.processing import ProcessingProgress
 from app.services.records import RecordService
 from app.services.store import RecordStore
-from tests.test_api import _make_sample_pdf_bytes
+from tests.sample_documents import make_sample_pdf_bytes
 from tests.test_spanish_extraction import SPANISH_HEADER
 
 
@@ -74,7 +74,7 @@ def test_process_record_persists_partial_data_before_completion(tmp_path: Path) 
         max_upload_bytes=10_000_000,
         processing_mode="async",
     )
-    pdf_bytes = _make_sample_pdf_bytes()
+    pdf_bytes = make_sample_pdf_bytes()
     upload = UploadFile(filename="buddy.pdf", file=BytesIO(pdf_bytes))
     created = asyncio.run(service.create_from_upload(upload))
     record_id = created.id

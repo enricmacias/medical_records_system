@@ -7,16 +7,18 @@ A small modular monolith:
 - **Frontend (React + Vite):** upload, list, on-demand extracted-text preview, read-only structured record with edit mode, **progressive section loading** and progress feedback while `processing`, **site language toggle (EN/ES)**, poll while `processing`
 - **Backend (FastAPI):** REST API, orchestration, persistence, in-process background processing
 - **Heuristics + Ollama (host):** hybrid structuring; FakeLLM for tests/demos
-- **SQLite + filesystem:** metadata/JSON in SQLite; PDFs on disk
+- **SQLite + filesystem:** metadata/JSON in SQLite; original files (PDF / .docx) on disk
 
 ```text
 React ──HTTP──▶ FastAPI
-                  ├── adapters/pdfplumber       → raw text
+                  ├── adapters/document_extractor   → raw text (pdfplumber + python-docx)
                   ├── adapters/text_hints       → layout/visit/diagnosis + inline compound demographics + label-free species/breed
                   ├── adapters/llm (ollama|fake)→ demographics ± clinical narrative LLM; FakeLLM
                   ├── adapters/clinical_summary → heuristic clinical summary + optional LLM polish → clinical.history
                   └── services/storage          → SQLite + files
 ```
+
+Document extraction decisions: [ADR 0001 (pdfplumber)](../../docs/adr/0001-pdf-extraction-pdfplumber.md), [ADR 0004 (python-docx)](../../docs/adr/0004-docx-extraction-python-docx.md).
 
 ## Layers
 
@@ -25,7 +27,7 @@ React ──HTTP──▶ FastAPI
 | `api/` | HTTP routes, request/response models, status codes, schedule background work |
 | `domain/` | Pydantic medical-record schema, `ProcessingProgress`, shared source of truth |
 | `services/` | Use-cases: create upload, process record, update structured data |
-| `adapters/` | External I/O: PDF, heuristics, LLM, DB |
+| `adapters/` | External I/O: document extraction, heuristics, LLM, DB |
 
 Dependencies point inward: adapters and API depend on domain/services, not the reverse.
 
@@ -33,13 +35,13 @@ Dependencies point inward: adapters and API depend on domain/services, not the r
 
 ### Async mode (default: `PROCESSING_MODE=async`)
 
-1. Validate upload (PDF, size ≤ 10 MB)
-2. Persist file under `data/uploads/{id}.pdf`
+1. Validate upload (PDF or .docx, size ≤ 10 MB; reject legacy `.doc`)
+2. Persist file under `data/uploads/{id}.pdf` or `data/uploads/{id}.docx`
 3. Insert DB row (`status=processing`)
 4. **Return 201 immediately** with the processing record
 5. Background task (staged updates via `update_during_processing`):
    - Record progress (`starting` ~5%)
-   - Extract text via `PdfTextExtractor`; persist `raw_text` (~15%)
+   - Extract text via `DocumentTextExtractor` (composite: pdfplumber for PDF, python-docx for .docx); persist `raw_text` (~15%)
    - Structure via `MedicalRecordStructurer` with optional `on_progress` / `on_partial` callbacks:
      - Demographics → persist partial `structured_data` (pet, owner, meta; `clinical.history` empty) (~35%)
      - Clinical analysis, heuristic summary, optional polish → progress updates (~50–95%)
@@ -76,9 +78,10 @@ Clinical structuring uses **two optional LLM passes** after heuristics (see `spe
 
 | Situation | Expected `status` |
 |---|---|
-| Invalid/non-PDF/oversized upload | HTTP 400/413; no record (or not created) |
-| PDF stored; text extract + structure succeed | `completed` |
-| Multi-visit PDF; Ollama down; heuristics sufficient (`hybrid`/`heuristic`) | `completed` (heuristic-filled structured data + heuristic clinical summary) |
+| Invalid/unsupported/oversized upload | HTTP 400/413; no record (or not created) |
+| Document stored; text extract + structure succeed | `completed` |
+| Multi-visit document (PDF or .docx); Ollama down; heuristics sufficient (`hybrid`/`heuristic`) | `completed` (heuristic-filled structured data + heuristic clinical summary) |
+| Valid upload format but text extraction fails (corrupt PDF/.docx, password-protected .docx) | `failed` + `error_message` (extractor error) |
 | Clinical narrative LLM attempted and times out; workspace already has clinical hints | `completed` (heuristic clinical summary still set) |
 | Summary polish LLM attempted and times out; heuristic summary exists | `completed` (heuristic summary retained) |
 | Structurer raises with no recoverable structured data | `failed` + `error_message` |
@@ -91,7 +94,7 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 | Env var | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | `sqlite:///./data/app.db` | SQLite path |
-| `UPLOAD_DIR` | `./data/uploads` | PDF storage |
+| `UPLOAD_DIR` | `./data/uploads` | Original file storage |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` (local); Docker often `http://host.docker.internal:11434` | Ollama HTTP API |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Model name |
 | `LLM_PROVIDER` | `ollama` | `ollama` or `fake` |
@@ -104,10 +107,13 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 | `MAX_UPLOAD_BYTES` | `10485760` | 10 MB |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` | Frontend origins |
 
+**Backend Python dependencies (extraction):** `pdfplumber` (PDF), `python-docx` (.docx) — see `backend/requirements.txt`.
+
 ## Frontend structure
 
 - **Site language:** header toggle (English / Español); `localStorage` persistence; independent of `meta.source_language`. See `specs/data-model.md` UI localization.
-- List page: records + upload control (upload returns quickly in async mode); list timestamps localized; record `status` on list still shown as API enum (not localized in v1)
+- List page: records + upload control (upload returns quickly in async mode); list timestamps localized; record `status` on list still shown as API enum (not localized in v1). List shows `original_filename` only — no separate file-type badge; format is inferred from filename extension.
+- Upload control: `accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"`; localized hint that Word support is **.docx only** (not legacy `.doc`).
 - Detail page:
   - Optional **language suggestion** banner when document language (`en`/`es`) differs from site language
   - **Extracted text** toggle (hidden by default) shows `raw_text` when opened (available mid-processing once extraction completes)
@@ -124,11 +130,11 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 
 ## Testing strategy
 
-- Backend unit: pdfplumber adapter; heuristics (inline compound demographics in `tests/test_inline_demographics.py`; label-free species/breed in `tests/test_unlabeled_species_breed.py`); clinical summary in `tests/test_clinical_summary.py`; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
+- Backend unit: document extractors (pdfplumber + python-docx); heuristics (inline compound demographics in `tests/test_inline_demographics.py`; label-free species/breed in `tests/test_unlabeled_species_breed.py`); clinical summary in `tests/test_clinical_summary.py`; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
 - Backend unit/service: async returns `processing`; sync completes; `process_record` failure path; progressive processing in `tests/test_progressive_processing.py` (partial persistence, `processing` on GET, callback wiring)
 - Backend API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
 - Frontend unit (Vitest + Testing Library): clinical summary display (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); **UI i18n** (`LanguageContext`, `LanguageToggle`, `LanguageSuggestionBanner`, `formatDate`, `displayValues`); RecordForm (six pet fields, Owner, summary read-only, preserved on save, **clinical summary progress while processing**, **localized labels and date display**); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice, **partial structured data and processing panel while processing**, **language suggestion**
-- Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF with inline compound header lines and/or label-free species/breed header lines; optionally verify polished clinical summary when Ollama is available
+- Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF or .docx with inline compound header lines and/or label-free species/breed header lines; optionally verify polished clinical summary when Ollama is available
 
 ## Future extension points
 

@@ -6,11 +6,11 @@
 |---|---|---|
 | `id` | UUID string | Primary key |
 | `original_filename` | string | Uploaded file name |
-| `stored_path` | string | Relative path on disk |
-| `content_type` | string | Always `application/pdf` in v1 |
+| `stored_path` | string | Relative path on disk; stored as `{id}.pdf` or `{id}.docx` matching upload format |
+| `content_type` | string | `application/pdf` or `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
 | `status` | enum | `processing` \| `completed` \| `failed` |
 | `error_message` | string \| null | Failure detail if `failed` |
-| `raw_text` | string \| null | Extracted PDF text; `null` until extraction completes; may be set while `status=processing` |
+| `raw_text` | string \| null | Extracted document text; `null` until extraction completes; may be set while `status=processing` |
 | `structured_data` | JSON \| null | Validated medical record object; `null` until first partial or final write; may be **partial** while `processing` (see below) |
 | `processing_progress` | integer \| null | Ephemeral progress percent (0–100); cleared on terminal status |
 | `processing_step` | string \| null | Machine step id; cleared on terminal status |
@@ -39,7 +39,7 @@ Unknown values MUST be `null` (or empty list). The pipeline MUST NOT invent clin
 
 **Persisted shape (v1):** only pet demographics (six fields), owner contact, clinical summary, and meta. Visit details, medications lists, diagnosis, visit entry arrays, and other extraction workspace fields are used **during structuring only** and are **not stored** on the record.
 
-Supports multilingual clinic PDFs (especially Spanish/English), **two-column headers**, **inline compound header lines**, **label-free species/breed header tokens**, and long multi-visit histories (for clinical summary generation).
+Supports multilingual clinic documents (especially Spanish/English), **two-column headers**, **inline compound header lines**, **label-free species/breed header tokens**, and long multi-visit histories (for clinical summary generation).
 
 ```json
 {
@@ -112,12 +112,12 @@ The structured form shows **only** these sections. **Section titles and field la
 
 ## UI localization (site language)
 
-v1 supports **English** and **Spanish** for the **site UI** only (header toggle). This is **independent** of `meta.source_language` (PDF/extraction language).
+v1 supports **English** and **Spanish** for the **site UI** only (header toggle). This is **independent** of `meta.source_language` (document/extraction language).
 
 | Aspect | Behavior |
 |---|---|
 | Toggle | Header **English / Español** on all pages; preference in `localStorage` (`vetrecords-ui-locale`); default from browser locale (`es*` → Spanish, else English). |
-| Localized | App chrome, section titles, field **labels**, buttons, record-detail **status**, processing **steps** (via `processing.step` + percent), confidence labels, missing-field path labels, species **display** (Dog/Perro, Cat/Gato), sex **display** (read-only), list timestamps (`toLocaleString`). |
+| Localized | App chrome, section titles, field **labels**, buttons, record-detail **status**, processing **steps** (via `processing.step` + percent; backend `processing.message` is English-generic and is **not** shown by the v1 UI), confidence labels, missing-field path labels, species **display** (Dog/Perro, Cat/Gato), sex **display** (read-only), list timestamps (`toLocaleString`). |
 | Not localized (values) | **`pet.name`**, **`pet.microchip`**, **`owner.name`** — always shown as stored/extracted. |
 | Not translated (content) | **Clinical summary prose** — remains in document language; only **dates within the summary** are reformatted for display. Breed, phone, email, address **values** stay as extracted. |
 | Date display | Read-only: **long form** with **month name** and **full year** in site language (e.g. EN: `October 4, 2019`; ES: `4 de octubre de 2019`). Applies to `pet.date_of_birth` and date patterns in clinical summary. Edit mode shows raw stored date strings. |
@@ -154,3 +154,18 @@ Structuring uses a wider **workspace** (`ExtractionRecord` in `domain/extraction
 5. **Clinical workspace (`LLM_CLINICAL_MODE`):** populate workspace clinical fields via heuristics ± optional **clinical narrative** LLM (`ClinicalNarrative`). These fields are **not persisted**; they feed clinical summary generation. See `specs/architecture.md` for narrative vs polish gating.
 6. **Clinical summary (`adapters/clinical_summary.py`):** always run at end of structuring — heuristic prose into `clinical.history`; optional **summary polish** LLM in `hybrid`/`llm` modes. FakeLLM: heuristic summary only.
 7. **Re-processing:** demographics and clinical summary refresh on **new upload** or when processing runs again; no separate re-process API in v1.
+
+### Document text extraction (PDF and .docx)
+
+Both formats produce a single `raw_text` string fed into the same heuristics + LLM pipeline (`DocumentTextExtractor` composite; see `docs/adr/0001-pdf-extraction-pdfplumber.md` and `docs/adr/0004-docx-extraction-python-docx.md`).
+
+| Format | Library | What is extracted |
+|---|---|---|
+| PDF (`.pdf`) | pdfplumber | Per-page text; blank pages skipped; pages joined with `\n\n` |
+| Word (`.docx`) | python-docx | Body **paragraphs** (non-empty); **table** rows as one line per row with cell text joined by ` \| ` |
+
+**Word limitations (v1):** headers/footers, text boxes, footnotes, embedded objects, and image-only content are **not** extracted. Image-only or scanned content inside a .docx is out of scope (same as scanned PDFs — no OCR). Password-protected or corrupt .docx files may fail extraction → `status=failed` with `error_message`.
+
+**Heuristic assumptions:** layout heuristics (header region ~80 lines, inline compound lines, label-free species/breed) operate on **line-oriented plain text**. PDF two-column layout may be merged by pdfplumber; Word loses column structure when flattened to paragraphs — extraction quality may vary by template. Multi-visit historiales in either format use the same visit-block heuristics once `raw_text` is available.
+
+**Empty extraction:** if `raw_text` is empty after extraction (blank PDF, empty .docx, or scanned PDF), structuring may yield low confidence and sparse structured data; unrecoverable extractor errors set `status=failed`.

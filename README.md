@@ -1,6 +1,6 @@
 # Veterinary Medical Records System
 
-Lean MVP that helps veterinarians upload a pet medical-record **PDF**, extract text, structure it with a **local LLM** (Ollama), and review/edit the result in a React UI.
+Lean MVP that helps veterinarians upload a pet medical-record **PDF or Word document (.docx)**, extract text, structure it with a **local LLM** (Ollama), and review/edit the result in a React UI.
 
 Built with **Spec-Driven Development**. Living specs live in [`specs/`](./specs/).
 
@@ -10,7 +10,7 @@ Built with **Spec-Driven Development**. Living specs live in [`specs/`](./specs/
 |---|---|
 | Frontend | React + Vite |
 | Backend | FastAPI |
-| PDF text | pdfplumber |
+| Document text | pdfplumber (PDF), python-docx (.docx) |
 | Structuring | Ollama structured outputs + `qwen2.5:7b` |
 | Persistence | SQLite + filesystem |
 | Packaging | Docker Compose |
@@ -34,6 +34,7 @@ docker compose up --build
 - UI: http://localhost:3000  
 - API: http://localhost:8000/api/health  
 - Sample PDF: [`backend/fixtures/sample_vet_record.pdf`](./backend/fixtures/sample_vet_record.pdf)
+- Sample Word: [`backend/fixtures/sample_vet_record.docx`](./backend/fixtures/sample_vet_record.docx) (.docx only; legacy .doc not supported)
 
 ### Fake LLM mode (no Ollama)
 
@@ -77,11 +78,11 @@ Vite proxies `/api` to `http://127.0.0.1:8000`.
 
 See [`specs/api.md`](./specs/api.md).
 
-- `POST /api/records` — upload PDF (sync extract + structure)
+- `POST /api/records` — upload PDF or Word (.docx)
 - `GET /api/records` — list
 - `GET /api/records/{id}` — detail
 - `PATCH /api/records/{id}` — save edited structured data
-- `GET /api/records/{id}/file` — download original PDF
+- `GET /api/records/{id}/file` — download original file
 
 ## Spec-Driven Development
 

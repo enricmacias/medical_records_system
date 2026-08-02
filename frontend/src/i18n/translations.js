@@ -3,7 +3,7 @@ export const LOCALES = ['en', 'es']
 export const translations = {
   en: {
     app: {
-      tagline: 'PDF medical records, structured for review',
+      tagline: 'PDF and Word medical records, structured for review',
     },
     language: {
       en: 'English',
@@ -15,14 +15,14 @@ export const translations = {
       dismiss: 'Keep {{lang}}',
     },
     home: {
-      uploadTitle: 'Upload a veterinary PDF',
+      uploadTitle: 'Upload a veterinary document (PDF or Word)',
       uploadHint:
-        'Upload returns immediately. Text extraction and local LLM structuring continue in the background — open the record to watch progress.',
-      choosePdf: 'Choose PDF',
+        'Upload returns immediately. Text extraction and local LLM structuring continue in the background — open the record to watch progress. Word support is .docx only (not legacy .doc).',
+      chooseFile: 'Choose file',
       uploading: 'Uploading…',
       health: 'API: {{status}} · LLM: {{ollama}} · model: {{model}}',
       recentRecords: 'Recent records',
-      noRecords: 'No records yet. Upload a PDF to get started.',
+      noRecords: 'No records yet. Upload a PDF or Word (.docx) document to get started.',
     },
     record: {
       allRecords: '← All records',
@@ -31,7 +31,7 @@ export const translations = {
       statusProcessingFallback: 'extracting and structuring with the local LLM…',
       extractedText: 'Extracted text',
       hideExtractedText: 'Hide extracted text',
-      downloadPdf: 'Download PDF',
+      downloadFile: 'Download original file',
       processingTitle: 'Processing your document',
       processingHint:
         'Sections appear as soon as they are ready. The clinical summary is usually the slowest step on a local model.',
@@ -113,8 +113,8 @@ export const translations = {
       'clinical.history': 'Clinical summary',
     },
     processing: {
-      starting: 'Starting to process your PDF…',
-      extracting_text: 'Reading text from your PDF…',
+      starting: 'Starting to process your document…',
+      extracting_text: 'Reading text from your document…',
       demographics: 'Extracting pet and owner details from the document…',
       demographics_ready: 'Pet and owner details are ready. Clinical summary in progress…',
       clinical_analysis: 'Reviewing visits, diagnoses, and medications…',
@@ -126,7 +126,7 @@ export const translations = {
   },
   es: {
     app: {
-      tagline: 'Historiales médicos en PDF, estructurados para revisión',
+      tagline: 'Historiales médicos en PDF y Word, estructurados para revisión',
     },
     language: {
       en: 'Inglés',
@@ -138,14 +138,14 @@ export const translations = {
       dismiss: 'Mantener {{lang}}',
     },
     home: {
-      uploadTitle: 'Subir un PDF veterinario',
+      uploadTitle: 'Subir un documento veterinario (PDF o Word)',
       uploadHint:
-        'La subida termina al instante. La extracción de texto y la estructuración con LLM local continúan en segundo plano — abre el registro para ver el progreso.',
-      choosePdf: 'Elegir PDF',
+        'La subida termina al instante. La extracción de texto y la estructuración con LLM local continúan en segundo plano — abre el registro para ver el progreso. Word solo admite .docx (no .doc antiguo).',
+      chooseFile: 'Elegir archivo',
       uploading: 'Subiendo…',
       health: 'API: {{status}} · LLM: {{ollama}} · modelo: {{model}}',
       recentRecords: 'Registros recientes',
-      noRecords: 'Aún no hay registros. Sube un PDF para empezar.',
+      noRecords: 'Aún no hay registros. Sube un PDF o un documento Word (.docx) para empezar.',
     },
     record: {
       allRecords: '← Todos los registros',
@@ -154,7 +154,7 @@ export const translations = {
       statusProcessingFallback: 'extrayendo y estructurando con el LLM local…',
       extractedText: 'Texto extraído',
       hideExtractedText: 'Ocultar texto extraído',
-      downloadPdf: 'Descargar PDF',
+      downloadFile: 'Descargar archivo original',
       processingTitle: 'Procesando tu documento',
       processingHint:
         'Las secciones aparecen en cuanto están listas. El resumen clínico suele ser el paso más lento en un modelo local.',
@@ -236,8 +236,8 @@ export const translations = {
       'clinical.history': 'Resumen clínico',
     },
     processing: {
-      starting: 'Iniciando el procesamiento del PDF…',
-      extracting_text: 'Leyendo el texto del PDF…',
+      starting: 'Iniciando el procesamiento del documento…',
+      extracting_text: 'Leyendo el texto del documento…',
       demographics: 'Extrayendo datos de mascota y propietario del documento…',
       demographics_ready:
         'Datos de mascota y propietario listos. Resumen clínico en curso…',

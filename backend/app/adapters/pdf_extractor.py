@@ -1,25 +1,9 @@
-"""PDF text extraction adapters."""
+"""Backward-compatible re-exports; see document_extractor.py."""
 
-from __future__ import annotations
+from app.adapters.document_extractor import (
+    DocumentTextExtractor,
+    PdfplumberExtractor,
+)
 
-from abc import ABC, abstractmethod
-from pathlib import Path
-
-import pdfplumber
-
-
-class PdfTextExtractor(ABC):
-    @abstractmethod
-    def extract(self, path: Path) -> str:
-        raise NotImplementedError
-
-
-class PdfplumberExtractor(PdfTextExtractor):
-    def extract(self, path: Path) -> str:
-        chunks: list[str] = []
-        with pdfplumber.open(path) as pdf:
-            for page in pdf.pages:
-                text = page.extract_text() or ""
-                if text.strip():
-                    chunks.append(text)
-        return "\n\n".join(chunks).strip()
+# Historical name used across the codebase and ADRs.
+PdfTextExtractor = DocumentTextExtractor

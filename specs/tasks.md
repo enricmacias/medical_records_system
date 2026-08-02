@@ -17,17 +17,17 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 ## T2 — Upload + store
 
-- [x] `POST /api/records` accepts PDF, stores file, creates DB row
+- [x] `POST /api/records` accepts PDF and .docx, stores file, creates DB row
 - [x] `GET /api/records`, `GET /api/records/{id}`, `GET /api/records/{id}/file`
-- [x] Reject non-PDF / oversized files
+- [x] Reject unsupported formats / oversized files (legacy `.doc` rejected with clear error)
 - [x] Frontend upload + list
 
 ## T3 — Extract text
 
-- [x] pdfplumber adapter
+- [x] pdfplumber adapter (PDF); python-docx adapter added in T17
 - [x] Persist `raw_text`
 - [x] Frontend extracted-text preview (on-demand toggle; hidden by default)
-- [x] Fixture PDF + unit test
+- [x] Fixture PDF + unit test; .docx fixture + tests in T17
 
 ## T4 — Structure with LLM / heuristics
 
@@ -48,7 +48,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 - [x] Full README (install, Ollama, Docker, fake mode)
 - [x] `docs/architecture.md` summary + future improvements
-- [x] Sample fixture PDF
+- [x] Sample fixture PDF and .docx (T17)
 - [x] Acceptance checklist documented
 
 ## T7 — Async processing & performance (done)
@@ -130,3 +130,14 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Language suggestion banner when `meta.source_language` (`en`/`es`) differs from site language
 - [x] Frontend i18n (`frontend/src/i18n/`), `formatDate`, `displayValues`; Vitest coverage
 - [x] Align specs (data-model, acceptance, architecture, api, scope, tasks, docs, README)
+
+## T17 — Word (.docx) upload support (done)
+
+- [x] `python-docx` adapter for `.docx` text extraction (paragraphs + table rows)
+- [x] `CompositeDocumentExtractor` routes PDF vs .docx by stored extension
+- [x] `POST /api/records` accepts PDF and .docx; stores `{id}.pdf` or `{id}.docx` with correct `content_type`
+- [x] Reject unsupported formats and legacy `.doc` with clear errors
+- [x] Download endpoint streams stored `content_type`
+- [x] Frontend: broaden file `accept`; localized strings for PDF + Word; “Download original file”
+- [x] `tests/test_document_extractor.py`, docx upload in `tests/test_api.py`, shared `tests/sample_documents.py`
+- [x] Align specs (scope, problem, data-model, api, acceptance, architecture, tasks, README, ADR 0001/0003/0004 cross-references)

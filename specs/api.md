@@ -34,8 +34,27 @@ Notes:
 
 Multipart form upload.
 
-- Field: `file` (required) — PDF only
+- Field: `file` (required) — **PDF** or **Word (.docx)** only. Legacy binary **`.doc` is not supported**.
 - Max size: 10 MB (`MAX_UPLOAD_BYTES`)
+
+Accepted MIME types:
+
+| Format | Extension | `content_type` |
+|---|---|---|
+| PDF | `.pdf` | `application/pdf` |
+| Word (modern) | `.docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
+
+Validation uses file extension and/or `Content-Type`. Extension matching is **case-insensitive** (`.PDF`, `.DOCX` accepted). When extension and MIME disagree, **extension wins** (e.g. `report.docx` with `application/pdf` is treated as .docx).
+
+Some browsers send `application/octet-stream` for `.docx`; the extension is the reliable fallback. If **both** filename and MIME are ambiguous (e.g. missing filename defaults server-side to `upload.pdf`, empty MIME), validation follows the resolved name/MIME rules above — clients should send a correct filename and extension.
+
+**Example `400` responses** (`detail` string):
+
+| Case | Example `detail` |
+|---|---|
+| Unsupported type | `Only PDF and Word (.docx) files are supported` |
+| Legacy `.doc` | `Legacy Word (.doc) is not supported. Please upload .docx or PDF.` |
+| Empty file | `Uploaded file is empty` |
 
 **Processing (async by default):** store file → return `status: "processing"` immediately → extract + structure in a background task.
 
@@ -44,7 +63,7 @@ Multipart form upload.
 1. Receive `201` with `id` and `status: "processing"` (`processing` may be `null` until the first progress write).
 2. Poll `GET /api/records/{id}` about every **1.5–2 seconds** until `status` is `completed` or `failed`.
 3. While `status=processing`, the API may return **partial data** as each stage finishes:
-   - `raw_text` — typically available after PDF text extraction (~15% progress).
+   - `raw_text` — typically available after document text extraction (~15% progress).
    - `structured_data` — partial **pet**, **owner**, and **meta** before the clinical summary is ready (`clinical.history` null/empty); full record including summary when `completed`.
    - `processing` — percent, step id, and user-facing message for the current stage (see `ProcessingProgress` below); `null` when not yet started or after terminal status.
 4. UI should show processing feedback (progress bar / messages), render structured sections as soon as `structured_data` is present, and refresh automatically.
@@ -55,7 +74,7 @@ Set `PROCESSING_MODE=sync` to wait for the full pipeline before responding (usef
 
 **Errors**
 
-- `400` — not a PDF / empty file
+- `400` — unsupported format / empty file / legacy `.doc` (see example `detail` strings above)
 - `413` — too large
 - `422` — validation
 - `500` — unexpected server error
@@ -105,9 +124,9 @@ Clients may send `pet.species` as **`Dog`** or **`Cat`** (v1 UI normalizes Spani
 
 ### `GET /api/records/{id}/file`
 
-Download/stream the original PDF.
+Download/stream the original uploaded file (PDF or .docx).
 
-**Response 200** — `application/pdf`  
+**Response 200** — `application/pdf` or `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (matches stored `content_type`). Response uses `original_filename` as the download name (`Content-Disposition` / `filename` on `FileResponse`).  
 **404** — not found
 
 ## Schemas
@@ -126,6 +145,8 @@ Download/stream the original PDF.
 ```
 
 `pet_name` may be null while `processing` (before partial demographics are saved) or if structured data has no pet name. Once partial `structured_data` includes `pet.name`, list `pet_name` may update on the next list fetch.
+
+`RecordSummary` does **not** include `content_type`; the v1 list UI infers format from `original_filename` extension only (no file-type badge).
 
 ### ProcessingProgress
 
@@ -149,8 +170,8 @@ Typical stages (see `specs/architecture.md` for pipeline detail):
 
 | Step | ~% | Example message |
 |---|---|---|
-| `starting` | 5 | Starting to process your PDF… |
-| `extracting_text` | 15 | Reading text from your PDF… |
+| `starting` | 5 | Starting to process your document… |
+| `extracting_text` | 15 | Reading text from your document… |
 | `demographics` | 20–35 | Extracting pet and owner details… / Pet and owner details are ready… |
 | `clinical_analysis` | 50 | Reviewing visits, diagnoses, and medications… |
 | `clinical_summary` | 65 | Writing the clinical summary… |
@@ -165,7 +186,7 @@ Typical stages (see `specs/architecture.md` for pipeline detail):
 {
   "id": "uuid",
   "original_filename": "string",
-  "content_type": "application/pdf",
+  "content_type": "application/pdf | application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "status": "processing | completed | failed",
   "error_message": "string | null",
   "raw_text": "string | null",

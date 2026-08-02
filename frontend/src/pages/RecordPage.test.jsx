@@ -164,7 +164,7 @@ describe('RecordPage', () => {
       processing: {
         percent: 15,
         step: 'extracting_text',
-        message: 'Reading text from your PDF…',
+        message: 'Reading text from your document…',
       },
       updated_at: '2026-08-01T10:00:00Z',
     })
@@ -173,7 +173,7 @@ describe('RecordPage', () => {
 
     await screen.findByRole('heading', { name: 'Processing your document' })
     expect(screen.getByText('15%')).toBeInTheDocument()
-    expect(screen.getByText('Reading text from your PDF…')).toBeInTheDocument()
+    expect(screen.getByText('Reading text from your document…')).toBeInTheDocument()
     expect(
       screen.getByText(/Structured fields will appear shortly as each section is ready/i),
     ).toBeInTheDocument()
@@ -225,7 +225,7 @@ describe('RecordPage', () => {
       processing: {
         percent: 15,
         step: 'extracting_text',
-        message: 'Reading text from your PDF…',
+        message: 'Reading text from your document…',
       },
       updated_at: '2026-08-01T10:00:00Z',
     })
@@ -233,6 +233,6 @@ describe('RecordPage', () => {
     renderPage('es')
 
     await screen.findByRole('heading', { name: 'marley.pdf' })
-    expect(screen.getAllByText(/Leyendo el texto del PDF/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Leyendo el texto del documento/i).length).toBeGreaterThan(0)
   })
 })
