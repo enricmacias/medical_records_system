@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domain.processing import ProcessingProgress
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -104,6 +106,10 @@ class RecordResponse(BaseModel):
     error_message: str | None = None
     raw_text: str | None = None
     structured_data: MedicalRecord | None = None
+    processing: ProcessingProgress | None = Field(
+        default=None,
+        description="Progress details while status is processing; null when completed or failed.",
+    )
     created_at: datetime
     updated_at: datetime
 

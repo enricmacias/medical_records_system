@@ -49,6 +49,24 @@ function TextArea({ label, value, onChange, rows = 3, hint, editing }) {
   )
 }
 
+function ProcessingIndicator({ processing }) {
+  if (!processing) return null
+  return (
+    <div className="processing-progress" role="status" aria-live="polite">
+      <div className="processing-progress-header">
+        <span className="processing-progress-percent">{processing.percent}%</span>
+        <span className="processing-progress-step">{processing.message}</span>
+      </div>
+      <div className="processing-progress-bar" aria-hidden="true">
+        <div
+          className="processing-progress-fill"
+          style={{ width: `${processing.percent}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function SpeciesField({ value, onChange, editing }) {
   if (!editing) {
     return (
@@ -79,7 +97,14 @@ function normalizePetForForm(pet) {
   }
 }
 
-export default function RecordForm({ initial, onSave, editing, onDirtyChange }) {
+export default function RecordForm({
+  initial,
+  onSave,
+  editing,
+  onDirtyChange,
+  isProcessing = false,
+  processing = null,
+}) {
   const seed = useMemo(() => {
     const clone = structuredClone(initial)
     clone.pet = normalizePetForForm(clone.pet || {})
@@ -206,14 +231,22 @@ export default function RecordForm({ initial, onSave, editing, onDirtyChange }) 
 
       <fieldset>
         <legend>Clinical summary</legend>
-        <TextArea
-          label="Clinical summary"
-          value={clinicalSummary}
-          onChange={() => {}}
-          rows={8}
-          hint="Auto-generated on upload; not editable."
-          editing={false}
-        />
+        {isProcessing && !clinicalSummary ? (
+          processing ? (
+            <ProcessingIndicator processing={processing} />
+          ) : (
+            <p className="muted">Generating clinical summary…</p>
+          )
+        ) : (
+          <TextArea
+            label="Clinical summary"
+            value={clinicalSummary}
+            onChange={() => {}}
+            rows={8}
+            hint="Auto-generated on upload; not editable."
+            editing={false}
+          />
+        )}
       </fieldset>
 
       <fieldset>

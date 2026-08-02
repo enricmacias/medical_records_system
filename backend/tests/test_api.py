@@ -79,6 +79,7 @@ def test_upload_and_structure(client: TestClient) -> None:
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "completed"
+    assert body.get("processing") is None
     assert body["raw_text"]
     assert "Buddy" in (body["raw_text"] or "")
     assert body["structured_data"]["pet"]["name"] == "Buddy"
@@ -92,6 +93,7 @@ def test_upload_and_structure(client: TestClient) -> None:
 
     detail = client.get(f"/api/records/{record_id}")
     assert detail.status_code == 200
+    assert detail.json().get("processing") is None
 
     file_resp = client.get(f"/api/records/{record_id}/file")
     assert file_resp.status_code == 200

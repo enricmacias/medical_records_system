@@ -10,4 +10,4 @@
 - **PDF page preview** alongside extracted text
 - **Evaluation set** of anonymized records to measure extraction quality
 - Optional stronger/faster models when hardware allows; automatic model routing by document length
-- Progress events (SSE/WebSocket) instead of HTTP polling for processing status
+- **Push transport** (SSE/WebSocket) for progress events — v1 already exposes percent and step messages via HTTP polling on `RecordResponse.processing`; push would reduce poll frequency and enable multi-tab live updates

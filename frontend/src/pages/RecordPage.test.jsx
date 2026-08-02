@@ -120,6 +120,63 @@ describe('RecordPage', () => {
     expect(within(panel).getByText('Marley')).toBeInTheDocument()
   })
 
+  it('shows partial structured data and progress while processing', async () => {
+    getRecord.mockResolvedValue({
+      id: 'rec-1',
+      original_filename: 'marley.pdf',
+      status: 'processing',
+      error_message: null,
+      raw_text: 'RAW PDF TEXT CONTENT',
+      structured_data: {
+        pet: { name: 'Marley', species: 'Dog' },
+        owner: { name: 'Beatriz' },
+        clinical: { history: null },
+        meta: { extraction_confidence: 'high', source_language: 'es', missing_fields: [] },
+      },
+      processing: {
+        percent: 65,
+        step: 'clinical_summary',
+        message: 'Writing the clinical summary…',
+      },
+      updated_at: '2026-08-01T10:00:00Z',
+    })
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Marley' })
+    const panel = await structuredPanel()
+    expect(within(panel).getByText('Marley')).toBeInTheDocument()
+    expect(within(panel).getByText('65%')).toBeInTheDocument()
+    expect(within(panel).getByText('Writing the clinical summary…')).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'Edit' })).toBeDisabled()
+  })
+
+  it('shows processing panel before structured data is available', async () => {
+    getRecord.mockResolvedValue({
+      id: 'rec-1',
+      original_filename: 'marley.pdf',
+      status: 'processing',
+      error_message: null,
+      raw_text: null,
+      structured_data: null,
+      processing: {
+        percent: 15,
+        step: 'extracting_text',
+        message: 'Reading text from your PDF…',
+      },
+      updated_at: '2026-08-01T10:00:00Z',
+    })
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Processing your document' })
+    expect(screen.getByText('15%')).toBeInTheDocument()
+    expect(screen.getByText('Reading text from your PDF…')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Structured fields will appear shortly as each section is ready/i),
+    ).toBeInTheDocument()
+  })
+
   it('shows a success notice after saving corrections', async () => {
     const user = userEvent.setup()
     renderPage()

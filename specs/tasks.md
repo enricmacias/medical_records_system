@@ -111,3 +111,12 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Remove Medications section and non-persisted clinical/visit fields from UI and PATCH payload
 - [x] Extraction workspace (`ExtractionRecord`) retains visit/meds/diagnosis for summary generation only
 - [x] Align specs (data-model, acceptance, architecture, scope, tasks, problem, docs)
+
+## T15 — Progressive processing UX (done)
+
+- [x] `ProcessingProgress` on `RecordResponse` (`percent`, `step`, `message`); DB progress columns; cleared on terminal status
+- [x] Staged `process_record`: persist `raw_text` and partial `structured_data` (pet/owner/meta) mid-flight via `update_during_processing`
+- [x] Structurer `on_progress` / `on_partial` callbacks (Ollama + FakeLLM)
+- [x] UI: sections render as ready; clinical summary progress bar + messages; Edit disabled while processing
+- [x] `tests/test_progressive_processing.py`; frontend RecordForm/RecordPage progressive-loading tests
+- [x] Align specs (api, data-model, architecture, acceptance, scope, tasks, docs)

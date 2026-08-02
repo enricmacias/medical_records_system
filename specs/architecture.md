@@ -4,7 +4,7 @@
 
 A small modular monolith:
 
-- **Frontend (React + Vite):** upload, list, on-demand extracted-text preview, read-only structured record with edit mode, poll while `processing`
+- **Frontend (React + Vite):** upload, list, on-demand extracted-text preview, read-only structured record with edit mode, **progressive section loading** and progress feedback while `processing`, poll while `processing`
 - **Backend (FastAPI):** REST API, orchestration, persistence, in-process background processing
 - **Heuristics + Ollama (host):** hybrid structuring; FakeLLM for tests/demos
 - **SQLite + filesystem:** metadata/JSON in SQLite; PDFs on disk
@@ -23,7 +23,7 @@ React ──HTTP──▶ FastAPI
 | Layer | Responsibility |
 |---|---|
 | `api/` | HTTP routes, request/response models, status codes, schedule background work |
-| `domain/` | Pydantic medical-record schema (shared source of truth) |
+| `domain/` | Pydantic medical-record schema, `ProcessingProgress`, shared source of truth |
 | `services/` | Use-cases: create upload, process record, update structured data |
 | `adapters/` | External I/O: PDF, heuristics, LLM, DB |
 
@@ -37,10 +37,15 @@ Dependencies point inward: adapters and API depend on domain/services, not the r
 2. Persist file under `data/uploads/{id}.pdf`
 3. Insert DB row (`status=processing`)
 4. **Return 201 immediately** with the processing record
-5. Background task:
-   - Extract text via `PdfTextExtractor`
-   - Structure via `MedicalRecordStructurer` (heuristics ± Ollama / Fake)
-   - Update row (`completed` + data, or `failed` + error)
+5. Background task (staged updates via `update_during_processing`):
+   - Record progress (`starting` ~5%)
+   - Extract text via `PdfTextExtractor`; persist `raw_text` (~15%)
+   - Structure via `MedicalRecordStructurer` with optional `on_progress` / `on_partial` callbacks:
+     - Demographics → persist partial `structured_data` (pet, owner, meta; `clinical.history` empty) (~35%)
+     - Clinical analysis, heuristic summary, optional polish → progress updates (~50–95%)
+   - Final update: `completed` + full data (including `clinical.history`), clear progress — or `failed` + `error_message`, clear progress
+
+Structurers emit progress through callbacks; `RecordService` persists each stage so polling clients can render sections incrementally.
 
 ### Sync mode (`PROCESSING_MODE=sync`)
 
@@ -103,9 +108,13 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 
 - List page: records + upload control (upload returns quickly in async mode)
 - Detail page:
-  - **Extracted text** toggle (hidden by default) shows `raw_text` when opened
-  - **Structured record** shown read-only by default (Pet — six demographic fields with Dog/Cat species; Owner; **Clinical summary**; Meta — see `specs/data-model.md` UI presentation)
-  - **Edit** enables Pet and Owner only; **Save corrections** persists via PATCH; **Cancel** exits edit mode (warns if there are unsaved changes)
+  - **Extracted text** toggle (hidden by default) shows `raw_text` when opened (available mid-processing once extraction completes)
+  - While `status=processing` and no structured data yet: **Processing your document** panel with percent bar and `processing.message`
+  - While `status=processing` with partial structured data: notice that pet/owner are ready; clinical summary still in progress
+  - **Structured record** shown as sections become available (Pet, Owner, Meta before clinical summary); read-only by default (Pet — six demographic fields with Dog/Cat species; Owner; **Clinical summary**; Meta — see `specs/data-model.md` UI presentation)
+  - **Clinical summary** section: progress bar + message while processing and summary empty; summary text when ready
+  - Status line shows `percent · message` during processing
+  - **Edit** enables Pet and Owner only (disabled while `status=processing`); **Save corrections** persists via PATCH; **Cancel** exits edit mode (warns if there are unsaved changes)
   - Success notice after a successful save
   - **Poll `GET /api/records/{id}` ~every 1.5–2s while `status=processing`**
 - Thin API client calling `/api/*`
@@ -113,9 +122,9 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 ## Testing strategy
 
 - Backend unit: pdfplumber adapter; heuristics (inline compound demographics in `tests/test_inline_demographics.py`; label-free species/breed in `tests/test_unlabeled_species_breed.py`); clinical summary in `tests/test_clinical_summary.py`; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
-- Backend unit/service: async returns `processing`; sync completes; `process_record` failure path
+- Backend unit/service: async returns `processing`; sync completes; `process_record` failure path; progressive processing in `tests/test_progressive_processing.py` (partial persistence, `processing` on GET, callback wiring)
 - Backend API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
-- Frontend unit (Vitest + Testing Library): clinical summary display (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); RecordForm (six pet fields, Owner, summary read-only, preserved on save); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice
+- Frontend unit (Vitest + Testing Library): clinical summary display (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); RecordForm (six pet fields, Owner, summary read-only, preserved on save, **clinical summary progress while processing**); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice, **partial structured data and processing panel while processing**
 - Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF with inline compound header lines and/or label-free species/breed header lines; optionally verify polished clinical summary when Ollama is available
 
 ## Future extension points
@@ -123,4 +132,5 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 - Swap extractor for Docling/OCR without changing API
 - Swap structurer for another OpenAI-compatible local runtime
 - Replace in-process background tasks with a durable job queue when needed
+- Push transport (SSE/WebSocket) for progress events instead of HTTP polling alone (poll + `processing` field already provides percent/messages in v1)
 - Stronger evaluation set for extraction quality across clinic templates

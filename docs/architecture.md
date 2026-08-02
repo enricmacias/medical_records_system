@@ -6,7 +6,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 
 | Concern | Choice |
 |---|---|
-| Frontend | React + Vite (polls while processing) |
+| Frontend | React + Vite (polls while processing; progressive section loading + progress feedback) |
 | Backend | FastAPI + in-process background tasks |
 | PDF text | pdfplumber |
 | Structuring | Heuristics ± Ollama structured outputs (`qwen2.5:7b`); FakeLLM for tests |
@@ -19,7 +19,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 1. **Spec-anchored SDD** — behavior lives in `specs/` before code.
 2. **Adapter interfaces** — PDF and LLM can be swapped without API changes.
 3. **Hybrid extraction** — heuristics first (inline compound demographics, label-free species/breed, visit blocks); optional LLM for weak clinical hints (narrative) and/or summary polish; heuristic clinical summary always generated; timeout falls back to heuristics; species normalized to Dog/Cat when inferable.
-4. **Async by default** — upload returns `processing`; UI polls until `completed`/`failed`.
+4. **Async by default** — upload returns `processing`; UI polls until `completed`/`failed`; partial pet/owner/meta and `processing` percent/messages appear before clinical summary completes.
 5. **Human-in-the-loop** — pet (six demographic fields) and owner are editable; clinical summary and meta are read-only in v1.
 6. **Fake LLM** — tests and demos work without GPU/model download.
 

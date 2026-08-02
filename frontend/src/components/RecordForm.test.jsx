@@ -128,6 +128,49 @@ describe('RecordForm', () => {
     })
   })
 
+  it('shows progress while clinical summary is still generating', () => {
+    render(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          clinical: { history: null },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+        isProcessing={true}
+        processing={{
+          percent: 65,
+          step: 'clinical_summary',
+          message: 'Writing the clinical summary…',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('65%')).toBeInTheDocument()
+    expect(screen.getByText('Writing the clinical summary…')).toBeInTheDocument()
+    expect(screen.queryByText('Stored clinical summary from extraction.')).not.toBeInTheDocument()
+  })
+
+  it('shows a fallback message when processing without progress details', () => {
+    render(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          clinical: { history: null },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+        isProcessing={true}
+        processing={null}
+      />,
+    )
+
+    expect(screen.getByText('Generating clinical summary…')).toBeInTheDocument()
+    expect(screen.queryByText('65%')).not.toBeInTheDocument()
+  })
+
   it('preserves clinical summary on save and only sends persisted fields', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()

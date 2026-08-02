@@ -25,6 +25,7 @@ from app.domain.extraction_models import (
     Medication,
 )
 from app.domain.models import MedicalRecord, PetInfo
+from app.domain.processing import ProcessingProgress
 from app.services.records import RecordService
 from app.services.store import RecordStore
 from tests.test_api import _make_sample_pdf_bytes
@@ -319,3 +320,81 @@ def test_api_async_mode_returns_processing_then_completes(
     dependencies.get_store.cache_clear()
     dependencies.get_extractor.cache_clear()
     dependencies.get_structurer.cache_clear()
+
+
+def test_update_during_processing_persists_progress_and_partial_data(tmp_path: Path) -> None:
+    store = RecordStore(f"sqlite:///{tmp_path / 'progress.db'}")
+    record = store.create(
+        record_id="rec-progress",
+        original_filename="buddy.pdf",
+        stored_path=str(tmp_path / "buddy.pdf"),
+        content_type="application/pdf",
+    )
+    partial = MedicalRecord(pet=PetInfo(name="EarlyPet"))
+    updated = store.update_during_processing(
+        record.id,
+        structured_data=partial,
+        progress=ProcessingProgress(
+            percent=35,
+            step="demographics",
+            message="Pet and owner details are ready.",
+        ),
+    )
+    assert updated.status.value == "processing"
+    assert updated.processing is not None
+    assert updated.processing.percent == 35
+    assert updated.processing.message == "Pet and owner details are ready."
+    assert updated.structured_data is not None
+    assert updated.structured_data.pet.name == "EarlyPet"
+
+    from app.domain.models import RecordStatus
+
+    completed = store.update_processing_result(
+        record.id,
+        status=RecordStatus.completed,
+        structured_data=MedicalRecord(pet=PetInfo(name="FinalPet")),
+    )
+    assert completed.processing is None
+    assert completed.structured_data.pet.name == "FinalPet"
+
+
+def test_process_record_passes_progress_callbacks_to_structurer(tmp_path: Path) -> None:
+    store = RecordStore(f"sqlite:///{tmp_path / 'callbacks.db'}")
+    upload_dir = tmp_path / "uploads"
+    partial = MedicalRecord(pet=PetInfo(name="Partial"))
+    final = MedicalRecord(pet=PetInfo(name="Final"))
+
+    def structure(raw_text, on_progress=None, on_partial=None):
+        if on_progress:
+            on_progress(
+                ProcessingProgress(
+                    percent=50,
+                    step="clinical_analysis",
+                    message="Reviewing visits…",
+                )
+            )
+        if on_partial:
+            on_partial(partial)
+        return final
+
+    structurer = MagicMock()
+    structurer.structure.side_effect = structure
+    service = RecordService(
+        store=store,
+        extractor=PdfplumberExtractor(),
+        structurer=structurer,
+        upload_dir=upload_dir,
+        max_upload_bytes=10_000_000,
+        processing_mode="async",
+    )
+    pdf_bytes = _make_sample_pdf_bytes()
+    upload = UploadFile(filename="buddy.pdf", file=BytesIO(pdf_bytes))
+    created = asyncio.run(service.create_from_upload(upload))
+    result = service.process_record(created.id)
+
+    structurer.structure.assert_called_once()
+    call_kwargs = structurer.structure.call_args.kwargs
+    assert call_kwargs["on_progress"] is not None
+    assert call_kwargs["on_partial"] is not None
+    assert result.status.value == "completed"
+    assert result.structured_data.pet.name == "Final"

@@ -14,6 +14,7 @@ from app.domain.models import (
     RecordSummary,
     utcnow,
 )
+from app.domain.processing import ProcessingProgress
 
 
 class RecordStore:
@@ -53,6 +54,53 @@ class RecordStore:
                 """
             )
             conn.commit()
+            self._ensure_processing_columns(conn)
+
+    def _ensure_processing_columns(self, conn: sqlite3.Connection) -> None:
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(records)").fetchall()
+        }
+        if "processing_progress" not in columns:
+            conn.execute(
+                "ALTER TABLE records ADD COLUMN processing_progress INTEGER"
+            )
+        if "processing_step" not in columns:
+            conn.execute("ALTER TABLE records ADD COLUMN processing_step TEXT")
+        if "processing_message" not in columns:
+            conn.execute("ALTER TABLE records ADD COLUMN processing_message TEXT")
+
+    def update_during_processing(
+        self,
+        record_id: str,
+        *,
+        raw_text: str | None = None,
+        structured_data: MedicalRecord | None = None,
+        progress: ProcessingProgress | None = None,
+    ) -> RecordResponse:
+        now = utcnow().isoformat()
+        fields: list[str] = ["updated_at = ?"]
+        values: list[Any] = [now]
+
+        if raw_text is not None:
+            fields.append("raw_text = ?")
+            values.append(raw_text)
+        if structured_data is not None:
+            fields.append("structured_data = ?")
+            values.append(structured_data.model_dump_json())
+        if progress is not None:
+            fields.extend(
+                ["processing_progress = ?", "processing_step = ?", "processing_message = ?"]
+            )
+            values.extend([progress.percent, progress.step, progress.message])
+
+        values.append(record_id)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE records SET {', '.join(fields)} WHERE id = ?",
+                tuple(values),
+            )
+            conn.commit()
+        return self.get(record_id)
 
     def create(
         self,
@@ -103,7 +151,8 @@ class RecordStore:
                 """
                 UPDATE records
                 SET status = ?, error_message = ?, raw_text = ?, structured_data = ?,
-                    updated_at = ?
+                    processing_progress = NULL, processing_step = NULL,
+                    processing_message = NULL, updated_at = ?
                 WHERE id = ?
                 """,
                 (status.value, error_message, raw_text, payload, now, record_id),
@@ -119,7 +168,9 @@ class RecordStore:
             cur = conn.execute(
                 """
                 UPDATE records
-                SET structured_data = ?, status = ?, error_message = NULL, updated_at = ?
+                SET structured_data = ?, status = ?, error_message = NULL,
+                    processing_progress = NULL, processing_step = NULL,
+                    processing_message = NULL, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -163,6 +214,13 @@ class RecordStore:
         structured: MedicalRecord | None = None
         if row["structured_data"]:
             structured = MedicalRecord.model_validate_json(row["structured_data"])
+        progress: ProcessingProgress | None = None
+        if row["status"] == RecordStatus.processing.value and row["processing_progress"] is not None:
+            progress = ProcessingProgress(
+                percent=int(row["processing_progress"]),
+                step=row["processing_step"] or "processing",
+                message=row["processing_message"] or "Processing your document…",
+            )
         return RecordResponse(
             id=row["id"],
             original_filename=row["original_filename"],
@@ -171,6 +229,7 @@ class RecordStore:
             error_message=row["error_message"],
             raw_text=row["raw_text"],
             structured_data=structured,
+            processing=progress,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

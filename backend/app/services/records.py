@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from fastapi import UploadFile
 
 from app.adapters.llm import MedicalRecordStructurer
 from app.adapters.pdf_extractor import PdfTextExtractor
-from app.domain.models import RecordResponse, RecordStatus, new_record_id
+from app.domain.models import MedicalRecord, RecordResponse, RecordStatus, new_record_id
+from app.domain.processing import ProcessingProgress
 from app.services.store import RecordStore
+
+ProgressCallback = Callable[[ProcessingProgress], None]
+PartialCallback = Callable[[MedicalRecord], None]
 
 
 class RecordService:
@@ -67,9 +72,45 @@ class RecordService:
     def process_record(self, record_id: str) -> RecordResponse:
         """Extract text and structure the record (runs sync or in background)."""
         try:
+            self.store.update_during_processing(
+                record_id,
+                progress=ProcessingProgress(
+                    percent=5,
+                    step="starting",
+                    message="Starting to process your PDF…",
+                ),
+            )
             stored_path = Path(self.store.get_stored_path(record_id))
             raw_text = self.extractor.extract(stored_path)
-            structured = self.structurer.structure(raw_text)
+            self.store.update_during_processing(
+                record_id,
+                raw_text=raw_text,
+                progress=ProcessingProgress(
+                    percent=15,
+                    step="extracting_text",
+                    message="Reading text from your PDF…",
+                ),
+            )
+
+            def on_progress(progress: ProcessingProgress) -> None:
+                self.store.update_during_processing(record_id, progress=progress)
+
+            def on_partial(partial: MedicalRecord) -> None:
+                self.store.update_during_processing(
+                    record_id,
+                    structured_data=partial,
+                    progress=ProcessingProgress(
+                        percent=35,
+                        step="demographics",
+                        message="Pet and owner details are ready. Clinical summary in progress…",
+                    ),
+                )
+
+            structured = self.structurer.structure(
+                raw_text,
+                on_progress=on_progress,
+                on_partial=on_partial,
+            )
             return self.store.update_processing_result(
                 record_id,
                 status=RecordStatus.completed,

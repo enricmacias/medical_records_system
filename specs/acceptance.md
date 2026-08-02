@@ -5,6 +5,8 @@
 - [x] User can upload a PDF medical record from the web UI
 - [x] Non-PDF uploads are rejected with a clear error
 - [x] In async mode, upload returns quickly with `status=processing` and the UI polls until terminal status
+- [x] While `status=processing`, the API may return partial `structured_data` (pet, owner, meta) before the clinical summary is ready; UI renders those sections as soon as data is available
+- [x] While the clinical summary is still generating, the UI shows **percent progress** and a user-facing step message (`RecordResponse.processing`); **Edit** is disabled until `completed`
 - [x] System extracts text from a text-based PDF; raw text is available on demand via **Extracted text** (not shown by default)
 - [x] System produces structured JSON matching `specs/data-model.md` (slim persisted shape: pet, owner, `clinical.history`, meta)
 - [x] Structured **`pet`** and the record-detail **Pet** section expose exactly **six** demographic fields — **`name`**, **`species`**, **`breed`**, **`sex`**, **`date_of_birth`**, **`microchip`** (UI labels: Name, Species, Breed, Sex, Date of birth, Microchip). No other pet fields (e.g. weight, coat color) appear in the persisted schema, UI, or editable form.
@@ -35,8 +37,8 @@
 
 ## Quality bar
 
-- [x] Backend unit/integration tests cover extraction, heuristics/hybrid modes (including inline compound demographics in `tests/test_inline_demographics.py`, label-free species/breed in `tests/test_unlabeled_species_breed.py`, and clinical summary in `tests/test_clinical_summary.py`), schema validation, async/sync API paths (with FakeLLM)
-- [x] Frontend unit tests (Vitest) cover display helpers (including `buildClinicalResume` / clinical summary, species normalization for `CANINA` / `Felina`), RecordForm view/edit/save (six pet fields, clinical summary read-only and preserved on save), and RecordPage extracted-text / edit-cancel / save-notice flows
+- [x] Backend unit/integration tests cover extraction, heuristics/hybrid modes (including inline compound demographics in `tests/test_inline_demographics.py`, label-free species/breed in `tests/test_unlabeled_species_breed.py`, clinical summary in `tests/test_clinical_summary.py`, and progressive processing in `tests/test_progressive_processing.py`), schema validation, async/sync API paths (with FakeLLM)
+- [x] Frontend unit tests (Vitest) cover display helpers (including `buildClinicalResume` / clinical summary, species normalization for `CANINA` / `Felina`), RecordForm view/edit/save (six pet fields, clinical summary read-only and preserved on save, **progress while summary generating**), and RecordPage extracted-text / edit-cancel / save-notice / **partial-data and processing-panel** flows
 - [x] Failure matrix honored: Ollama down/timeout does not force `failed` when heuristics produce usable structured data; unrecoverable errors set `failed` with `error_message`
 - [x] Health reports Ollama reachability without silently inventing empty structured payloads
 - [x] Code organized for maintainability (adapters/services/domain separation)
@@ -46,7 +48,7 @@
 1. Start stack (`docker compose up` or local dev). Ollama optional for hybrid historial demos (heuristic clinical summary still generated); required for clinical narrative on weak-hint documents and for summary polish on strong-hint documents under `hybrid`. Pull `qwen2.5:7b` when using live Ollama.
 2. Upload sample PDF fixture and/or a Spanish multi-visit style document.
 3. Optionally upload or paste-test a document whose header uses **inline compound lines** (`ALYA - Nacimiento: …`, `Nombre … - Nacimiento: …`, or `Hembra Estado: …`) or **label-free species/breed lines** (`Canino` alone, `CANINA - YORKSHIRE TERRIER`, or `Felina Persa`).
-4. Observe `processing` then `completed` on the record page (async).
-5. Review the **Structured record** (Pet with six fields, Owner, **Clinical summary**, Meta). Confirm `pet.name` is not a compound string; confirm species shows as **Dog** or **Cat** when inferred. Confirm clinical summary is readable prose without pet/owner names or weight. Optionally open **Extracted text**.
-6. Click **Edit**, change a Pet or Owner field, **Save corrections** — confirm the success notice; reload and verify the change persists and **clinical summary is unchanged**. Optionally **Cancel** to exercise the unsaved-changes prompt.
+4. Observe `processing` on the record page (async). Watch **percent progress** and step messages; confirm **Pet** and **Owner** appear before the **Clinical summary** finishes (progress bar in summary section until text is ready).
+5. When `completed`, review the **Structured record** (Pet with six fields, Owner, **Clinical summary**, Meta). Confirm `pet.name` is not a compound string; confirm species shows as **Dog** or **Cat** when inferred. Confirm clinical summary is readable prose without pet/owner names or weight. Optionally open **Extracted text** (also available mid-processing after text extraction).
+6. Confirm **Edit** is disabled while processing; after completion, click **Edit**, change a Pet or Owner field, **Save corrections** — confirm the success notice; reload and verify the change persists and **clinical summary is unchanged**. Optionally **Cancel** to exercise the unsaved-changes prompt.
 7. Note: records processed **before** a schema change may contain extra keys in `structured_data` until re-uploaded; the API ignores unknown keys on read/PATCH.

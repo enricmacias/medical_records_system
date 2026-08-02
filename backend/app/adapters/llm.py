@@ -5,10 +5,12 @@ from __future__ import annotations
 import copy
 import json
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 from pydantic import BaseModel, Field
+
+from app.domain.processing import ProcessingProgress
 
 from app.adapters.clinical_summary import (
     CLINICAL_SUMMARY_POLISH_PROMPT,
@@ -56,6 +58,20 @@ CLINICAL_NARRATIVE_PROMPT = """Write a short clinical summary from the visit sni
 Return JSON only. Use only facts in the text. Keep each field under 2 sentences.
 If unknown, use null. Do not list every visit.
 """
+
+
+ProgressCallback = Callable[[ProcessingProgress], None]
+PartialCallback = Callable[[MedicalRecord], None]
+
+
+def _emit_progress(
+    callback: ProgressCallback | None,
+    percent: int,
+    step: str,
+    message: str,
+) -> None:
+    if callback:
+        callback(ProcessingProgress(percent=percent, step=step, message=message))
 
 
 class DemographicsBundle(BaseModel):
@@ -112,7 +128,13 @@ def _user_prompt(document_text: str, hints: dict[str, Any]) -> str:
 
 class MedicalRecordStructurer(ABC):
     @abstractmethod
-    def structure(self, raw_text: str) -> MedicalRecord:
+    def structure(
+        self,
+        raw_text: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+        on_partial: PartialCallback | None = None,
+    ) -> MedicalRecord:
         raise NotImplementedError
 
     @abstractmethod
@@ -149,7 +171,13 @@ class OllamaStructurer(MedicalRecordStructurer):
         except Exception:
             return "unavailable"
 
-    def structure(self, raw_text: str) -> MedicalRecord:
+    def structure(
+        self,
+        raw_text: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+        on_partial: PartialCallback | None = None,
+    ) -> MedicalRecord:
         text = normalize_extracted_text(raw_text)
         if not text:
             return MedicalRecord(
@@ -159,6 +187,12 @@ class OllamaStructurer(MedicalRecordStructurer):
                 )
             )
 
+        _emit_progress(
+            on_progress,
+            20,
+            "demographics",
+            "Extracting pet and owner details from the document…",
+        )
         hints = build_layout_hints(text)
         _header, body = split_for_long_document(text)
 
@@ -172,9 +206,25 @@ class OllamaStructurer(MedicalRecordStructurer):
                     user=_user_prompt(clinical_focus_text(body, max_chars=3500), hints),
                 )
             except Exception:
-                # Never fail the whole job if heuristics can recover.
                 demographics = self._demographics_from_hints(hints)
 
+        record = ExtractionRecord(
+            pet=demographics.pet,
+            owner=demographics.owner,
+            visit=demographics.visit,
+            clinical=ExtractionClinicalInfo(),
+            meta=demographics.meta,
+        )
+        record = self._apply_demographics_fallbacks(record, hints)
+        if on_partial:
+            on_partial(to_persisted_record(record))
+
+        _emit_progress(
+            on_progress,
+            50,
+            "clinical_analysis",
+            "Reviewing visits, diagnoses, and medications…",
+        )
         clinical = self._clinical_from_hints(hints)
         if self._should_call_clinical_llm(hints):
             try:
@@ -185,7 +235,6 @@ class OllamaStructurer(MedicalRecordStructurer):
                 )
                 clinical = self._merge_narrative(clinical, narrative)
             except Exception:
-                # Keep heuristic clinical data; timeout must not fail the record.
                 if not clinical.notes:
                     clinical.notes = (
                         "Clinical fields filled from document heuristics; "
@@ -193,14 +242,30 @@ class OllamaStructurer(MedicalRecordStructurer):
                     )
 
         record = ExtractionRecord(
-            pet=demographics.pet,
-            owner=demographics.owner,
-            visit=demographics.visit,
+            pet=record.pet,
+            owner=record.owner,
+            visit=record.visit,
             clinical=clinical,
-            meta=demographics.meta,
+            meta=record.meta,
         )
         record = self._apply_fallbacks(record, hints)
-        return to_persisted_record(self._finalize_clinical_summary(record, hints, body))
+
+        _emit_progress(
+            on_progress,
+            65,
+            "clinical_summary",
+            "Writing the clinical summary…",
+        )
+        record = self._finalize_clinical_summary(
+            record, hints, body, on_progress=on_progress
+        )
+        _emit_progress(
+            on_progress,
+            95,
+            "completing",
+            "Saving your structured record…",
+        )
+        return to_persisted_record(record)
 
     def _should_call_clinical_llm(self, hints: dict[str, Any]) -> bool:
         mode = (self.clinical_mode or "hybrid").lower()
@@ -342,6 +407,41 @@ class OllamaStructurer(MedicalRecordStructurer):
         return model_cls.model_validate_json(content)
 
     @staticmethod
+    def _apply_demographics_fallbacks(
+        record: ExtractionRecord, hints: dict[str, Any]
+    ) -> ExtractionRecord:
+        likely = hints.get("likely_fields") or {}
+        data = record.model_dump()
+
+        mapping = {
+            "pet.name": ("pet", "name"),
+            "pet.species": ("pet", "species"),
+            "pet.breed": ("pet", "breed"),
+            "pet.sex": ("pet", "sex"),
+            "pet.date_of_birth": ("pet", "date_of_birth"),
+            "pet.microchip": ("pet", "microchip"),
+            "owner.name": ("owner", "name"),
+            "owner.address": ("owner", "address"),
+        }
+        for hint_key, path in mapping.items():
+            if hint_key not in likely:
+                continue
+            section, field = path
+            if data[section].get(field) in (None, "", []):
+                data[section][field] = likely[hint_key]
+
+        if not data["meta"].get("source_language") and hints.get("language_hint"):
+            data["meta"]["source_language"] = hints["language_hint"]
+
+        species = normalize_species_dog_cat(data["pet"].get("species"))
+        if not species:
+            species = normalize_species_dog_cat(likely.get("pet.species"))
+        if species:
+            data["pet"]["species"] = species
+
+        return ExtractionRecord.model_validate(data)
+
+    @staticmethod
     def _apply_fallbacks(record: ExtractionRecord, hints: dict[str, Any]) -> ExtractionRecord:
         likely = hints.get("likely_fields") or {}
         data = record.model_dump()
@@ -430,12 +530,20 @@ class OllamaStructurer(MedicalRecordStructurer):
         record: ExtractionRecord,
         hints: dict[str, Any],
         body: str,
+        *,
+        on_progress: ProgressCallback | None = None,
     ) -> ExtractionRecord:
         baseline_record = finalize_clinical_summary(record)
         if not self._should_polish_clinical_summary(hints):
             return baseline_record
         if not has_clinical_content(baseline_record, hints):
             return baseline_record
+        _emit_progress(
+            on_progress,
+            80,
+            "clinical_summary_polish",
+            "Polishing the clinical summary with AI (this can take a minute)…",
+        )
         baseline = (baseline_record.clinical.history or "").strip()
         try:
             polished = self._chat_model(
@@ -462,11 +570,24 @@ class FakeLLMStructurer(MedicalRecordStructurer):
     def health(self) -> str:
         return "skipped"
 
-    def structure(self, raw_text: str) -> MedicalRecord:
+    def structure(
+        self,
+        raw_text: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+        on_partial: PartialCallback | None = None,
+    ) -> MedicalRecord:
         text = normalize_extracted_text(raw_text)
         lower = text.lower()
         hints = build_layout_hints(text)
         likely = hints.get("likely_fields") or {}
+
+        _emit_progress(
+            on_progress,
+            20,
+            "demographics",
+            "Extracting pet and owner details from the document…",
+        )
 
         if "marley" in lower or likely.get("pet.name") == "MARLEY":
             entries = hints.get("visit_blocks") or [
@@ -483,9 +604,7 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                     "summary": "Conjuntivitis folicular; provocación con pienso.",
                 },
             ]
-            return to_persisted_record(
-                finalize_clinical_summary(
-                    ExtractionRecord(
+            extraction = ExtractionRecord(
                 pet=PetInfo(
                     name=likely.get("pet.name") or "MARLEY",
                     species=normalize_species_dog_cat(likely.get("pet.species")) or "Dog",
@@ -533,8 +652,9 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                     extraction_confidence="high",
                     missing_fields=[],
                 ),
-                ),
             )
+            return self._finalize_fake_record(
+                extraction, on_progress=on_progress, on_partial=on_partial
             )
 
         diagnosis = None
@@ -543,9 +663,7 @@ class FakeLLMStructurer(MedicalRecordStructurer):
         elif "vaccination" in lower or "vacuna" in lower:
             diagnosis = "Routine vaccination"
 
-        return to_persisted_record(
-            finalize_clinical_summary(
-                ExtractionRecord(
+        extraction = ExtractionRecord(
             pet=PetInfo(
                 name="Buddy"
                 if "buddy" in lower
@@ -613,9 +731,40 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                 extraction_confidence="high" if text else "low",
                 missing_fields=[],
             ),
-            ),
         )
+        return self._finalize_fake_record(
+            extraction, on_progress=on_progress, on_partial=on_partial
         )
+
+    @staticmethod
+    def _finalize_fake_record(
+        extraction: ExtractionRecord,
+        *,
+        on_progress: ProgressCallback | None = None,
+        on_partial: PartialCallback | None = None,
+    ) -> MedicalRecord:
+        if on_partial:
+            on_partial(to_persisted_record(extraction))
+        _emit_progress(
+            on_progress,
+            50,
+            "clinical_analysis",
+            "Reviewing visits, diagnoses, and medications…",
+        )
+        _emit_progress(
+            on_progress,
+            65,
+            "clinical_summary",
+            "Writing the clinical summary…",
+        )
+        finalized = finalize_clinical_summary(extraction)
+        _emit_progress(
+            on_progress,
+            95,
+            "completing",
+            "Saving your structured record…",
+        )
+        return to_persisted_record(finalized)
 
 
 def build_structurer(

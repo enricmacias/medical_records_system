@@ -113,6 +113,8 @@ export default function RecordPage() {
   }
 
   const isProcessing = record.status === 'processing'
+  const processingMessage = record.processing?.message
+  const hasStructuredData = Boolean(record.structured_data)
 
   return (
     <section className="stack">
@@ -124,7 +126,11 @@ export default function RecordPage() {
           <h1>{record.structured_data?.pet?.name || record.original_filename}</h1>
           <p className="muted">
             Status: {record.status}
-            {isProcessing ? ' — extracting and structuring with the local LLM…' : ''}
+            {isProcessing
+              ? record.processing
+                ? ` — ${record.processing.percent}% · ${record.processing.message}`
+                : ' — extracting and structuring with the local LLM…'
+              : ''}
             {record.error_message ? ` — ${record.error_message}` : ''}
           </p>
         </div>
@@ -142,11 +148,33 @@ export default function RecordPage() {
         </div>
       </div>
 
-      {isProcessing && (
+      {isProcessing && !hasStructuredData && record.processing && (
         <div className="panel">
+          <h2>Processing your document</h2>
           <p className="muted">
-            Processing can take up to a couple of minutes on a local 7B model. This page
-            refreshes automatically.
+            Sections appear as soon as they are ready. The clinical summary is usually the
+            slowest step on a local model.
+          </p>
+          <div className="processing-progress" role="status" aria-live="polite">
+            <div className="processing-progress-header">
+              <span className="processing-progress-percent">{record.processing.percent}%</span>
+              <span className="processing-progress-step">{record.processing.message}</span>
+            </div>
+            <div className="processing-progress-bar" aria-hidden="true">
+              <div
+                className="processing-progress-fill"
+                style={{ width: `${record.processing.percent}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isProcessing && hasStructuredData && (
+        <div className="panel processing-partial-notice" role="status">
+          <p className="muted">
+            Pet and owner details are ready.
+            {processingMessage ? ` ${processingMessage}` : ' Clinical summary still in progress…'}
           </p>
         </div>
       )}
@@ -177,7 +205,12 @@ export default function RecordPage() {
                     {saving ? 'Saving…' : 'Save corrections'}
                   </button>
                 )}
-                <button type="button" className="ghost-button" onClick={toggleEditing}>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={toggleEditing}
+                  disabled={isProcessing}
+                >
                   {editing ? 'Cancel' : 'Edit'}
                 </button>
               </div>
@@ -198,11 +231,13 @@ export default function RecordPage() {
             onSave={onSave}
             editing={editing}
             onDirtyChange={onDirtyChange}
+            isProcessing={isProcessing}
+            processing={record.processing}
           />
         ) : (
           <p className="muted">
             {isProcessing
-              ? 'Structured fields will appear when processing finishes.'
+              ? 'Structured fields will appear shortly as each section is ready.'
               : 'No structured data available.'}
           </p>
         )}

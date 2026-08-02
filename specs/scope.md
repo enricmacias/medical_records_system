@@ -10,9 +10,9 @@
   - optional **Ollama** structured outputs (`qwen2.5:7b` by default) for demographics, clinical narrative (weak hints or `llm` mode), and clinical summary polish (strong hints or `llm` mode) per `LLM_CLINICAL_MODE`
   - **FakeLLM** adapter for tests and demos without Ollama (heuristic clinical summary included)
 - Persist original file, raw text, and structured JSON (SQLite + filesystem)
-- React UI: upload, list, on-demand extracted-text preview, structured record (read-only by default; edit mode for **Pet** and **Owner** only; **Clinical summary** and **Meta** always read-only), **processing-state polling**
-- REST API (FastAPI)
-- **Async processing by default** (`PROCESSING_MODE=async`): upload returns immediately; extract + structure run in a background task; client polls record status
+- React UI: upload, list, on-demand extracted-text preview, structured record (read-only by default; edit mode for **Pet** and **Owner** only; **Clinical summary** and **Meta** always read-only), **processing-state polling** with **progressive section loading** (pet/owner/meta as soon as ready) and **percent/step progress feedback** for the clinical summary
+- REST API (FastAPI) including `processing` on `RecordResponse` while structuring
+- **Async processing by default** (`PROCESSING_MODE=async`): upload returns immediately; extract + structure run in a background task with staged persistence; client polls record status and partial data
 - Docker Compose for API + frontend
 - Specs, architecture docs, install instructions, future-work notes
 
@@ -24,7 +24,7 @@
 - Dedicated job queues / workers (Redis, Celery, RQ, etc.) — in-process `BackgroundTasks` only
 - Cloud LLM APIs (paid or remote)
 - PDF visual page viewer (optional later; text preview is enough)
-- Real-time collaboration / websockets
+- Real-time collaboration / websockets (v1 uses HTTP polling with `processing` percent/messages for user feedback)
 - Production hardening (rate limits, audit logs, HIPAA/GDPR compliance program)
 
 ## Constraints

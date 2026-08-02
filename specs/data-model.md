@@ -10,10 +10,28 @@
 | `content_type` | string | Always `application/pdf` in v1 |
 | `status` | enum | `processing` \| `completed` \| `failed` |
 | `error_message` | string \| null | Failure detail if `failed` |
-| `raw_text` | string \| null | Extracted PDF text (`null` while `processing` in async mode) |
-| `structured_data` | JSON \| null | Validated medical record object (`null` while `processing`) |
+| `raw_text` | string \| null | Extracted PDF text; `null` until extraction completes; may be set while `status=processing` |
+| `structured_data` | JSON \| null | Validated medical record object; `null` until first partial or final write; may be **partial** while `processing` (see below) |
+| `processing_progress` | integer \| null | Ephemeral progress percent (0–100); cleared on terminal status |
+| `processing_step` | string \| null | Machine step id; cleared on terminal status |
+| `processing_message` | string \| null | User-facing step message; cleared on terminal status |
 | `created_at` | ISO datetime | Creation time |
 | `updated_at` | ISO datetime | Last update time |
+
+Progress columns are persisted only to support polling; they are exposed on the API as `RecordResponse.processing` and cleared when the record reaches `completed` or `failed`.
+
+### Partial `structured_data` while `processing`
+
+During async structuring, the backend may persist and return a **partial** `MedicalRecord` before `status=completed`:
+
+| Present early | Typically empty until completion |
+|---|---|
+| `pet` (six demographic fields) | — |
+| `owner` | — |
+| `meta` | — |
+| — | `clinical.history` (clinical summary) |
+
+Partial payloads are valid `MedicalRecord` objects. `meta.missing_fields` may include `clinical.history` until the summary is generated. Clients should tolerate `clinical.history` null/empty while `status=processing` and show progress feedback for that section.
 
 ## Structured medical record (`structured_data`)
 
@@ -83,10 +101,12 @@ The structured form shows **only** these sections:
 |---|---|---|
 | Pet | six `pet` fields | Name, Species, Breed, Sex, Date of birth, Microchip — read-only until Edit. |
 | Owner | `owner.*` | Name, phone, email, address; read-only until Edit. |
-| Clinical summary | `clinical.history` | Read-only always (max **2000** characters). Auto-generated on upload; paragraph breaks preserved (`pre-wrap`). |
-| Meta | `meta.*` | Confidence, language, missing fields (display only). |
+| Clinical summary | `clinical.history` | Read-only always (max **2000** characters). Auto-generated on upload; paragraph breaks preserved (`pre-wrap`). While `status=processing` and summary not ready, show **progress bar + step message** instead of the summary text. |
+| Meta | `meta.*` | Confidence, language, missing fields (display only). May appear in partial structured data before clinical summary completes. |
 
-**Edit interaction:** Pet and Owner fields are read-only by default. **Edit** enables those inputs only. **Clinical summary** and **Meta** remain read-only. **Save corrections** PATCHes `structured_data`; **Cancel** discards unsaved edits (confirm when dirty).
+**Progressive loading (async):** Pet, Owner, and Meta sections render as soon as partial `structured_data` is available. **Clinical summary** is the slowest step on a local LLM; show percent and user-facing `processing.message` until `clinical.history` is populated or `status=completed`.
+
+**Edit interaction:** Pet and Owner fields are read-only by default. **Edit** enables those inputs only and is **disabled** while `status=processing`. **Clinical summary** and **Meta** remain read-only. **Save corrections** PATCHes `structured_data`; **Cancel** discards unsaved edits (confirm when dirty).
 
 **Save semantics:** the form sends only `pet` (six fields), `owner`, `clinical.history` (preserved from load), and `meta` (preserved from load). There is no Medications section and no other clinical or visit fields in the UI or PATCH payload.
 
