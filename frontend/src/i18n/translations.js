@@ -71,10 +71,16 @@ export const translations = {
       summaryHint: 'Auto-generated on upload; not editable.',
       generatingSummary: 'Generating clinical summary…',
       confidence: 'Confidence: {{value}}',
+      confidenceLabel: 'Confidence',
       language: 'Language: {{value}}',
+      languageLabel: 'Language',
       missing: 'Missing: {{fields}}',
       empty: '—',
       n_a: 'n/a',
+      lowConfidenceNotice:
+        'Extraction confidence is low — review highlighted fields below and fill in any gaps.',
+      flagMissing: 'Not extracted',
+      flagLowConfidence: 'Uncertain',
     },
     species: {
       dog: 'Dog',
@@ -194,10 +200,16 @@ export const translations = {
       summaryHint: 'Generado automáticamente al subir; no editable.',
       generatingSummary: 'Generando resumen clínico…',
       confidence: 'Confianza: {{value}}',
+      confidenceLabel: 'Confianza',
       language: 'Idioma: {{value}}',
+      languageLabel: 'Idioma',
       missing: 'Faltantes: {{fields}}',
       empty: '—',
       n_a: 'n/d',
+      lowConfidenceNotice:
+        'La confianza de extracción es baja — revisa los campos resaltados y completa los que falten.',
+      flagMissing: 'No extraído',
+      flagLowConfidence: 'Incierto',
     },
     species: {
       dog: 'Perro',

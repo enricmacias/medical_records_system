@@ -10,7 +10,7 @@
   - optional **Ollama** structured outputs (`qwen2.5:7b` by default) for demographics, clinical narrative (weak hints or `llm` mode), and clinical summary polish (strong hints or `llm` mode) per `LLM_CLINICAL_MODE`
   - **FakeLLM** adapter for tests and demos without Ollama (heuristic clinical summary included)
 - Persist original file, raw text, and structured JSON (SQLite + filesystem)
-- React UI: upload, list, on-demand extracted-text preview, structured record (read-only by default; edit mode for **Pet** and **Owner** only; **Clinical summary** and **Meta** always read-only), **processing-state polling** with **progressive section loading** (pet/owner/meta as soon as ready) and **percent/step progress feedback** for the clinical summary, **site language toggle (English / Español)** with localized UI labels and date display
+- React UI: upload, list, on-demand extracted-text preview, structured record (read-only by default; edit mode for **Pet** and **Owner** only; **Clinical summary** and **Meta** always read-only), **processing-state polling** with **progressive section loading** (pet/owner/meta as soon as ready) and **percent/step progress feedback** for the clinical summary, **site language toggle (English / Español)** with localized UI labels and date display, **confidence UX** (highlight missing and low-confidence fields in the structured form)
 - REST API (FastAPI) including `processing` on `RecordResponse` while structuring
 - **Async processing by default** (`PROCESSING_MODE=async`): upload returns immediately; extract + structure run in a background task with staged persistence; client polls record status and partial data
 - Docker Compose for API + frontend

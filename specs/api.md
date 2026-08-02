@@ -199,4 +199,4 @@ Typical stages (see `specs/architecture.md` for pipeline detail):
 
 `processing` is `null` when `status` is `completed` or `failed`, and may be `null` briefly at the start of async processing before the first progress write.
 
-See `specs/data-model.md` for `MedicalRecord` field semantics and partial-state rules during `processing`.
+See `specs/data-model.md` for `MedicalRecord` field semantics, partial-state rules during `processing`, and **Confidence UX** (frontend highlighting from `meta.extraction_confidence` and `meta.missing_fields` — no additional API fields).

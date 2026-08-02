@@ -124,7 +124,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 ## T16 — Site UI localization EN/ES (done)
 
 - [x] Header language toggle (English / Español); `localStorage` preference; default from browser locale
-- [x] Localized UI chrome, labels, status (record detail), processing steps (from `processing.step`), species/sex display, confidence and missing-field labels
+- [x] Localized UI chrome, labels, status (record detail), processing steps (from `processing.step`), species/sex display, confidence values and missing-field path labels; T18 adds per-field badges and low-confidence banner
 - [x] Date display: month name + full year in site language (DOB and dates in clinical summary); raw values on save/edit
 - [x] Do not translate: pet name, microchip, owner name; clinical summary prose stays in document language
 - [x] Language suggestion banner when `meta.source_language` (`en`/`es`) differs from site language
@@ -141,3 +141,12 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Frontend: broaden file `accept`; localized strings for PDF + Word; “Download original file”
 - [x] `tests/test_document_extractor.py`, docx upload in `tests/test_api.py`, shared `tests/sample_documents.py`
 - [x] Align specs (scope, problem, data-model, api, acceptance, architecture, tasks, README, ADR 0001/0003/0004 cross-references)
+
+## T18 — Confidence UX: highlight missing / low-confidence fields (done)
+
+- [x] `fieldConfidence` helpers: highlight `meta.missing_fields` paths; highlight empty highlightable fields when `extraction_confidence` is `low`; priority rules; skip `clinical.history` during processing
+- [x] RecordForm: localized badges (“Not extracted” / “Uncertain”), form notice for low confidence, warning styling on Meta confidence; Meta missing-path summary list retained alongside badges
+- [x] Visual treatment: solid vs dashed amber borders; clinical fieldset highlight; `aria-invalid` on flagged edit inputs
+- [x] Highlights persist in edit mode; Save preserves `meta.missing_fields` (badges until re-upload)
+- [x] Vitest: `fieldConfidence.test.js`, RecordForm highlight tests (EN/ES)
+- [x] Align specs (scope, problem, data-model, acceptance, architecture, api, tasks, docs, README)

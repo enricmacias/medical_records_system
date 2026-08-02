@@ -4,7 +4,7 @@
 
 A small modular monolith:
 
-- **Frontend (React + Vite):** upload, list, on-demand extracted-text preview, read-only structured record with edit mode, **progressive section loading** and progress feedback while `processing`, **site language toggle (EN/ES)**, poll while `processing`
+- **Frontend (React + Vite):** upload, list, on-demand extracted-text preview, read-only structured record with edit mode, **progressive section loading** and progress feedback while `processing`, **site language toggle (EN/ES)**, **confidence UX** (missing/low-confidence field highlights), poll while `processing`
 - **Backend (FastAPI):** REST API, orchestration, persistence, in-process background processing
 - **Heuristics + Ollama (host):** hybrid structuring; FakeLLM for tests/demos
 - **SQLite + filesystem:** metadata/JSON in SQLite; original files (PDF / .docx) on disk
@@ -119,21 +119,21 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
   - **Extracted text** toggle (hidden by default) shows `raw_text` when opened (available mid-processing once extraction completes)
   - While `status=processing` and no structured data yet: **Processing your document** panel with percent bar and **localized** step text (from `processing.step`)
   - While `status=processing` with partial structured data: notice that pet/owner are ready; clinical summary still in progress
-  - **Structured record** shown as sections become available (Pet, Owner, Meta before clinical summary); read-only by default; labels and display values per site language (see data-model)
+  - **Structured record** shown as sections become available (Pet, Owner, Meta before clinical summary); read-only by default; labels and display values per site language; **missing/low-confidence field highlighting** per `specs/data-model.md` Confidence UX (badges, borders, low-confidence banner, Meta confidence warning when `low`)
   - **Clinical summary** section: progress bar + localized message while processing and summary empty; summary text when ready (prose not translated; dates reformatted)
   - Status line shows localized `percent · step message` during processing
   - **Edit** enables Pet and Owner only (disabled while `status=processing`); **Save corrections** persists via PATCH; **Cancel** exits edit mode (warns if there are unsaved changes)
   - Success notice after a successful save
   - **Poll `GET /api/records/{id}` ~every 1.5–2s while `status=processing`**
 - Thin API client calling `/api/*`
-- **i18n:** `frontend/src/i18n/` (translations, `LanguageContext`); display helpers in `frontend/src/lib/formatDate.js` and `displayValues.js`
+- **i18n:** `frontend/src/i18n/` (translations, `LanguageContext`); display helpers in `frontend/src/lib/formatDate.js`, `displayValues.js`, and `fieldConfidence.js`
 
 ## Testing strategy
 
 - Backend unit: document extractors (pdfplumber + python-docx); heuristics (inline compound demographics in `tests/test_inline_demographics.py`; label-free species/breed in `tests/test_unlabeled_species_breed.py`); clinical summary in `tests/test_clinical_summary.py`; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
 - Backend unit/service: async returns `processing`; sync completes; `process_record` failure path; progressive processing in `tests/test_progressive_processing.py` (partial persistence, `processing` on GET, callback wiring)
 - Backend API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
-- Frontend unit (Vitest + Testing Library): clinical summary display (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); **UI i18n** (`LanguageContext`, `LanguageToggle`, `LanguageSuggestionBanner`, `formatDate`, `displayValues`); RecordForm (six pet fields, Owner, summary read-only, preserved on save, **clinical summary progress while processing**, **localized labels and date display**); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice, **partial structured data and processing panel while processing**, **language suggestion**
+- Frontend unit (Vitest + Testing Library): clinical summary display (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); **UI i18n** (`LanguageContext`, `LanguageToggle`, `LanguageSuggestionBanner`, `formatDate`, `displayValues`); **`fieldConfidence`** highlight rules; RecordForm (six pet fields, Owner, summary read-only, preserved on save, **clinical summary progress while processing**, **localized labels and date display**, **missing/low-confidence field highlighting** including edit-mode persistence); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice, **partial structured data and processing panel while processing**, **language suggestion**
 - Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF or .docx with inline compound header lines and/or label-free species/breed header lines; optionally verify polished clinical summary when Ollama is available
 
 ## Future extension points

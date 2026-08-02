@@ -10,6 +10,9 @@
   --line: #c5d0d7;
   --brand: #0f6a5c;
   --danger: #9b2c2c;
+  --warn: #b45309;
+  --warn-bg: rgba(180, 83, 9, 0.08);
+  --warn-border: rgba(180, 83, 9, 0.38);
   --shadow: 0 14px 40px rgba(28, 42, 50, 0.08);
   font-family: 'IBM Plex Sans', sans-serif;
   line-height: 1.5;
@@ -359,6 +362,79 @@ legend {
 .field span {
   font-size: 0.86rem;
   color: var(--muted);
+}
+
+.field-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.field-flag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  line-height: 1.2;
+}
+
+.field-flag-missing {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+}
+
+.field-flag-low-confidence {
+  color: var(--warn);
+  background: transparent;
+  border: 1px dashed var(--warn-border);
+}
+
+.field-flagged-missing {
+  padding: 0.55rem;
+  border-radius: 10px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+}
+
+.field-flagged-low-confidence {
+  padding: 0.55rem;
+  border-radius: 10px;
+  background: rgba(180, 83, 9, 0.04);
+  border: 1px dashed var(--warn-border);
+}
+
+.field-flagged-missing input,
+.field-flagged-missing textarea,
+.field-flagged-missing select,
+.field-flagged-low-confidence input,
+.field-flagged-low-confidence textarea,
+.field-flagged-low-confidence select {
+  border-color: var(--warn-border);
+}
+
+.form-confidence-notice {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.meta-confidence-low {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.fieldset-flagged-missing {
+  border-color: var(--warn-border);
+  background: rgba(180, 83, 9, 0.04);
 }
 
 .field input,

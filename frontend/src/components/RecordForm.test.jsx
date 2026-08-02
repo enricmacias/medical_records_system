@@ -284,4 +284,73 @@ describe('RecordForm', () => {
     expect(payload.meta).toEqual(sampleRecord.meta)
     expect(Object.keys(payload)).toEqual(['pet', 'owner', 'clinical', 'meta'])
   })
+
+  it('highlights fields listed in missing_fields', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          pet: { ...sampleRecord.pet, breed: null },
+          meta: {
+            ...sampleRecord.meta,
+            missing_fields: ['pet.breed'],
+          },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Not extracted')).toBeInTheDocument()
+    expect(document.querySelector('.field-flagged-missing')).toBeInTheDocument()
+  })
+
+  it('shows low-confidence notice and highlights empty fields', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          owner: { ...sampleRecord.owner, phone: null, email: null },
+          meta: {
+            extraction_confidence: 'low',
+            source_language: 'es',
+            missing_fields: [],
+          },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText(/Extraction confidence is low/i),
+    ).toBeInTheDocument()
+    expect(screen.getAllByText('Uncertain').length).toBeGreaterThan(0)
+    expect(document.querySelector('.field-flagged-low-confidence')).toBeInTheDocument()
+    expect(document.querySelector('.meta-confidence-low')).toHaveTextContent('low')
+  })
+
+  it('shows Spanish highlight labels when site language is Spanish', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          pet: { ...sampleRecord.pet, microchip: null },
+          meta: {
+            extraction_confidence: 'medium',
+            source_language: 'es',
+            missing_fields: ['pet.microchip'],
+          },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+      { locale: 'es' },
+    )
+
+    expect(screen.getByText('No extraído')).toBeInTheDocument()
+  })
 })

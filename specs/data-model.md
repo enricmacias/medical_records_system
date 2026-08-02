@@ -31,7 +31,7 @@ During async structuring, the backend may persist and return a **partial** `Medi
 | `meta` | — |
 | — | `clinical.history` (clinical summary) |
 
-Partial payloads are valid `MedicalRecord` objects. `meta.missing_fields` may include `clinical.history` until the summary is generated. Clients should tolerate `clinical.history` null/empty while `status=processing` and show progress feedback for that section.
+Partial payloads are valid `MedicalRecord` objects. `meta.missing_fields` may include `clinical.history` until the summary is generated. Clients should tolerate `clinical.history` null/empty while `status=processing` and show progress feedback for that section (not missing-field highlights on clinical summary during processing). Pet/owner fields may show **Not extracted** badges from partial `missing_fields` while still `processing`.
 
 ## Structured medical record (`structured_data`)
 
@@ -90,8 +90,8 @@ No other pet fields (e.g. weight, coat color) exist in the persisted schema, ext
 | `owner.*` | Client/owner name, phone, email, address. |
 | `clinical.history` | **Clinical summary** — readable prose generated at upload/re-process (max **2000** characters). Read-only in the UI. Workspace fields (diagnosis, medications, visit blocks, etc.) feed summary generation but are **not persisted**. Medication names may appear briefly inside the summary text. |
 | `meta.source_language` | ISO 639-1 when detectable (`es`, `en`, …). **Document language** — independent of site UI language; shown as raw code in Meta. |
-| `meta.extraction_confidence` | Pipeline self-assessment (`low` / `medium` / `high`). |
-| `meta.missing_fields` | Persisted paths still empty after extraction. May include: `pet.name`, `pet.species`, `pet.breed`, `owner.name`, `clinical.history`. |
+| `meta.extraction_confidence` | Pipeline self-assessment (`low` / `medium` / `high`). Drives form-level low-confidence notice and “Uncertain” field badges (see Confidence UX). |
+| `meta.missing_fields` | Persisted dot-paths still empty **after extraction completes** (see below). Drives “Not extracted” field badges. Unknown paths (e.g. `raw_text` in tests) are ignored by the UI. |
 
 ## UI presentation (record detail)
 
@@ -99,12 +99,41 @@ The structured form shows **only** these sections. **Section titles and field la
 
 | Section | Source | Notes |
 |---|---|---|
-| Pet | six `pet` fields | Labels localized; read-only until Edit. |
-| Owner | `owner.*` | Labels localized; owner **name value not translated**. Read-only until Edit. |
-| Clinical summary | `clinical.history` | Read-only always (max **2000** characters). **Prose stays in document language**; embedded dates reformatted for display. While `status=processing` and summary not ready, show **progress bar + localized step message** (from `processing.step`, not API `message`). |
-| Meta | `meta.*` | Confidence and missing-field labels localized; `source_language` shown as ISO code. May appear in partial structured data before clinical summary completes. |
+| Pet | six `pet` fields | Labels localized; read-only until Edit. Fields in `meta.missing_fields` or empty when `extraction_confidence` is `low` are **visually highlighted** (badge + border). |
+| Owner | `owner.*` | Labels localized; owner **name value not translated**. Same missing/low-confidence highlighting as Pet. Read-only until Edit. |
+| Clinical summary | `clinical.history` | Read-only always (max **2000** characters). **Prose stays in document language**; embedded dates reformatted for display. While `status=processing` and summary not ready, show **progress bar + localized step message** (from `processing.step`, not API `message`) — **no missing/low-confidence highlight** on this section during processing. After completion: highlight when path is in `missing_fields` or when confidence is `low` and summary is still empty. |
+| Meta | `meta.*` | Confidence and missing-field path labels localized; `source_language` shown as ISO code. **Summary list** of missing paths (`form.missing`) shown alongside per-field badges (intentional redundancy in v1). Confidence value uses warning styling when `low`. May appear in partial structured data before clinical summary completes. |
 
 **Progressive loading (async):** Pet, Owner, and Meta sections render as soon as partial `structured_data` is available. **Clinical summary** is the slowest step on a local LLM; show percent and localized processing step until `clinical.history` is populated or `status=completed`.
+
+**Confidence UX:** visual feedback so veterinarians can spot weak extraction without reading Meta alone. **No API changes** — driven entirely by `structured_data.meta` on the client.
+
+| Trigger | Badge (EN) | Badge (ES) | Visual |
+|---|---|---|---|
+| Path in `meta.missing_fields` | Not extracted | No extraído | Solid amber border + tinted background (`field-flagged-missing`); clinical fieldset uses `fieldset-flagged-missing` when `clinical.history` is missing |
+| `extraction_confidence` is `low` and field value is empty, path **not** in `missing_fields` | Uncertain | Incierto | Dashed amber border + lighter tint (`field-flagged-low-confidence`) |
+
+**Highlightable field paths** (pet six fields, all `owner.*`, `clinical.history`): `pet.name`, `pet.species`, `pet.breed`, `pet.sex`, `pet.date_of_birth`, `pet.microchip`, `owner.name`, `owner.phone`, `owner.email`, `owner.address`, `clinical.history`.
+
+**`missing_fields` persisted paths** (computed at finalize via `missing_fields_for_persisted()` / `PERSISTED_MISSING_PATHS`): `pet.name`, `pet.species`, `pet.breed`, `owner.name`, `clinical.history` only. Other empty fields (e.g. `owner.phone`, `pet.microchip`) never appear in `missing_fields` but may show **Uncertain** when overall confidence is `low`.
+
+**Priority:** if a path is in `missing_fields`, show **Not extracted** even when confidence is `low` (not both badges).
+
+**When confidence is `medium` or `high`:** only paths in `missing_fields` are highlighted; other empty fields have no highlight.
+
+**Form-level notice** when `extraction_confidence` is `low` (EN: “Extraction confidence is low — review highlighted fields below and fill in any gaps.”; ES: “La confianza de extracción es baja — revisa los campos resaltados y completa los que falten.”).
+
+**While `status=processing`:** pet/owner fields may already show **Not extracted** from partial `missing_fields`; `clinical.history` uses progress UI instead of highlights until processing ends or summary text exists.
+
+**Edit mode:** highlights remain on flagged inputs (`aria-invalid`); filling a field in the UI does **not** remove badges until re-upload/re-process — **Save corrections** preserves loaded `meta` (including `missing_fields`) unchanged in v1.
+
+**Empty display:** highlighted fields still show `—` (`form.empty`) when value is null/empty.
+
+**Default confidence:** if `extraction_confidence` is omitted, backend defaults to `low` — UI may highlight all empty highlightable fields aggressively until meta is populated.
+
+**Pipeline note:** structurers may set interim `missing_fields` during workspace extraction (e.g. only `pet.name`, `pet.species`, `owner.name` in the LLM adapter). **Final** `missing_fields` on `completed` records comes from `to_persisted_record()` / `missing_fields_for_persisted()`, not the interim list.
+
+**i18n keys (frontend):** `form.lowConfidenceNotice`, `form.flagMissing`, `form.flagLowConfidence`, `form.confidenceLabel`, `form.languageLabel`, `form.missing` (Meta summary list); legacy `form.confidence` / `form.language` templates retained but v1 UI uses split label + value for confidence/language rows.
 
 **Edit interaction:** Pet and Owner fields are read-only by default. **Edit** enables those inputs only and is **disabled** while `status=processing`. **Clinical summary** and **Meta** remain read-only. In **edit mode**, inputs show **raw stored values** (e.g. `M`, `04/10/19`); species select shows localized labels (Perro/Gato) but saves `Dog`/`Cat`. **Save corrections** PATCHes `structured_data`; **Cancel** discards unsaved edits (confirm when dirty).
 
@@ -117,7 +146,7 @@ v1 supports **English** and **Spanish** for the **site UI** only (header toggle)
 | Aspect | Behavior |
 |---|---|
 | Toggle | Header **English / Español** on all pages; preference in `localStorage` (`vetrecords-ui-locale`); default from browser locale (`es*` → Spanish, else English). |
-| Localized | App chrome, section titles, field **labels**, buttons, record-detail **status**, processing **steps** (via `processing.step` + percent; backend `processing.message` is English-generic and is **not** shown by the v1 UI), confidence labels, missing-field path labels, species **display** (Dog/Perro, Cat/Gato), sex **display** (read-only), list timestamps (`toLocaleString`). |
+| Localized | App chrome, section titles, field **labels**, buttons, record-detail **status**, processing **steps** (via `processing.step` + percent; backend `processing.message` is English-generic and is **not** shown by the v1 UI), confidence row labels (`form.confidenceLabel`, `form.languageLabel`), translated confidence **values** (`confidence.low` / `medium` / `high`), missing-field path labels in Meta list (`fields.*`), **confidence UX badges** (`form.flagMissing`, `form.flagLowConfidence`), **low-confidence banner** (`form.lowConfidenceNotice`), species **display** (Dog/Perro, Cat/Gato), sex **display** (read-only), list timestamps (`toLocaleString`). |
 | Not localized (values) | **`pet.name`**, **`pet.microchip`**, **`owner.name`** — always shown as stored/extracted. |
 | Not translated (content) | **Clinical summary prose** — remains in document language; only **dates within the summary** are reformatted for display. Breed, phone, email, address **values** stay as extracted. |
 | Date display | Read-only: **long form** with **month name** and **full year** in site language (e.g. EN: `October 4, 2019`; ES: `4 de octubre de 2019`). Applies to `pet.date_of_birth` and date patterns in clinical summary. Edit mode shows raw stored date strings. |
@@ -128,7 +157,7 @@ v1 supports **English** and **Spanish** for the **site UI** only (header toggle)
 
 - Backend validates `structured_data` with Pydantic on structurer output and on PATCH (`extra` fields from legacy records are ignored)
 - `meta.extraction_confidence` defaults to `low` if omitted
-- `meta.missing_fields` lists paths among persisted fields that are null/empty after extraction
+- `meta.missing_fields` lists paths among **persisted** fields that are null/empty after extraction (final list from `PERSISTED_MISSING_PATHS`; see Confidence UX)
 - Clinical summary: generation truncates to **2000** characters; UI displays up to **2000**
 - On PATCH, client normalizes `pet.species` to **`Dog`** or **`Cat`** when recognizable
 
