@@ -25,8 +25,13 @@ from app.adapters.text_hints import (
     clinical_focus_text,
     normalize_extracted_text,
     normalize_species_dog_cat,
+    normalize_sex_male_female,
     infer_species_from_text,
+    resolve_breed,
+    resolve_pet_name,
     split_for_long_document,
+    validated_breed,
+    validated_pet_name,
 )
 from app.domain.extraction_models import (
     ExtractionClinicalInfo,
@@ -340,7 +345,7 @@ class OllamaStructurer(MedicalRecordStructurer):
     @staticmethod
     def _hints_sufficient(hints: dict[str, Any]) -> bool:
         likely = hints.get("likely_fields") or {}
-        return bool(likely.get("pet.name"))
+        return bool(validated_pet_name(likely.get("pet.name")))
 
     @staticmethod
     def _demographics_from_hints(hints: dict[str, Any]) -> DemographicsBundle:
@@ -348,11 +353,11 @@ class OllamaStructurer(MedicalRecordStructurer):
         dates = hints.get("visit_dates_found") or []
         return DemographicsBundle(
             pet=PetInfo(
-                name=likely.get("pet.name"),
+                name=validated_pet_name(likely.get("pet.name")),
                 species=normalize_species_dog_cat(likely.get("pet.species"))
                 or likely.get("pet.species"),
-                breed=likely.get("pet.breed"),
-                sex=likely.get("pet.sex"),
+                breed=validated_breed(likely.get("pet.breed")),
+                sex=normalize_sex_male_female(likely.get("pet.sex")) or likely.get("pet.sex"),
                 date_of_birth=likely.get("pet.date_of_birth"),
                 microchip=likely.get("pet.microchip"),
             ),
@@ -439,6 +444,19 @@ class OllamaStructurer(MedicalRecordStructurer):
         if species:
             data["pet"]["species"] = species
 
+        sex = normalize_sex_male_female(data["pet"].get("sex"))
+        if not sex:
+            sex = normalize_sex_male_female(likely.get("pet.sex"))
+        if sex:
+            data["pet"]["sex"] = sex
+
+        data["pet"]["name"] = resolve_pet_name(
+            data["pet"].get("name"), likely.get("pet.name")
+        )
+        data["pet"]["breed"] = resolve_breed(
+            data["pet"].get("breed"), likely.get("pet.breed")
+        )
+
         return ExtractionRecord.model_validate(data)
 
     @staticmethod
@@ -514,6 +532,19 @@ class OllamaStructurer(MedicalRecordStructurer):
             species = normalize_species_dog_cat(likely.get("pet.species"))
         if species:
             data["pet"]["species"] = species
+
+        sex = normalize_sex_male_female(data["pet"].get("sex"))
+        if not sex:
+            sex = normalize_sex_male_female(likely.get("pet.sex"))
+        if sex:
+            data["pet"]["sex"] = sex
+
+        data["pet"]["name"] = resolve_pet_name(
+            data["pet"].get("name"), likely.get("pet.name")
+        )
+        data["pet"]["breed"] = resolve_breed(
+            data["pet"].get("breed"), likely.get("pet.breed")
+        )
 
         return ExtractionRecord.model_validate(data)
 
@@ -606,10 +637,10 @@ class FakeLLMStructurer(MedicalRecordStructurer):
             ]
             extraction = ExtractionRecord(
                 pet=PetInfo(
-                    name=likely.get("pet.name") or "MARLEY",
+                    name=validated_pet_name(likely.get("pet.name")) or "MARLEY",
                     species=normalize_species_dog_cat(likely.get("pet.species")) or "Dog",
-                    breed=likely.get("pet.breed") or "Labrador Retriever",
-                    sex=likely.get("pet.sex") or "M",
+                    breed=validated_breed(likely.get("pet.breed")) or "Labrador Retriever",
+                    sex=normalize_sex_male_female(likely.get("pet.sex")) or "Male",
                     date_of_birth=likely.get("pet.date_of_birth") or "04/10/19",
                     microchip=likely.get("pet.microchip") or "941000024967769",
                 ),
@@ -665,9 +696,11 @@ class FakeLLMStructurer(MedicalRecordStructurer):
 
         extraction = ExtractionRecord(
             pet=PetInfo(
-                name="Buddy"
-                if "buddy" in lower
-                else likely.get("pet.name") or "Unknown Pet",
+                name=(
+                    "Buddy"
+                    if "buddy" in lower
+                    else resolve_pet_name(likely.get("pet.name"), None) or "Unknown Pet"
+                ),
                 species=(
                     "Dog"
                     if ("dog" in lower or "canine" in lower or "canino" in lower)
@@ -677,10 +710,18 @@ class FakeLLMStructurer(MedicalRecordStructurer):
                         else normalize_species_dog_cat(likely.get("pet.species"))
                     )
                 ),
-                breed="Labrador Retriever"
-                if "labrador" in lower
-                else likely.get("pet.breed"),
-                sex="Male" if "male" in lower else likely.get("pet.sex"),
+                breed=(
+                    "Labrador Retriever"
+                    if "labrador" in lower
+                    else validated_breed(likely.get("pet.breed"))
+                ),
+                sex=normalize_sex_male_female("Male")
+                if "male" in lower
+                else (
+                    normalize_sex_male_female("Female")
+                    if "female" in lower
+                    else normalize_sex_male_female(likely.get("pet.sex"))
+                ),
                 date_of_birth="2020-03-15"
                 if "2020-03-15" in text
                 else likely.get("pet.date_of_birth"),

@@ -28,12 +28,15 @@ describe('displayValues', () => {
     expect(displaySpeciesLocalized('Canino', 'es', tEs)).toBe('Perro')
   })
 
-  it('localizes sex codes for display', () => {
+  it('localizes sex codes and canonical values for display', () => {
     const tEn = tFor('en')
     const tEs = tFor('es')
     expect(displaySex('M', 'en', tEn)).toBe('Male')
-    expect(displaySex('H', 'es', tEs)).toBe('Hembra')
-    expect(displaySex('Macho', 'es', tEs)).toBe('Macho')
+    expect(displaySex('Male', 'en', tEn)).toBe('Male')
+    expect(displaySex('Female', 'en', tEn)).toBe('Female')
+    expect(displaySex('Male', 'es', tEs)).toBe('Macho')
+    expect(displaySex('Female', 'es', tEs)).toBe('Hembra')
+    expect(displaySex('Hembra', 'es', tEs)).toBe('Hembra')
   })
 
   it('formats record dates with localized month names', () => {

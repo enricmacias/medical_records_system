@@ -3,6 +3,7 @@ import {
   buildClinicalResume,
   buildStructuredPetPayload,
   isStructuredRecordDirty,
+  normalizeSexForStorage,
   normalizeSpeciesForStorage,
 } from '../lib/recordDisplay'
 import {
@@ -161,11 +162,41 @@ function SpeciesField({ value, onChange, editing, highlight }) {
   )
 }
 
+function SexField({ value, onChange, editing, highlight }) {
+  const { t } = useLanguage()
+  const flaggedClass = fieldHighlightClass(highlight)
+
+  if (!editing) {
+    return (
+      <div className={`field field-readonly${flaggedClass ? ` ${flaggedClass}` : ''}`}>
+        <FieldLabel label={t('form.sex')} highlight={highlight} t={t} />
+        <p className="field-value">{displayValue(displaySex(value, null, t), t)}</p>
+      </div>
+    )
+  }
+  const selectValue = normalizeSexForStorage(value) ?? ''
+  return (
+    <label className={`field${flaggedClass ? ` ${flaggedClass}` : ''}`}>
+      <FieldLabel label={t('form.sex')} highlight={highlight} t={t} />
+      <select
+        value={selectValue}
+        onChange={(e) => onChange(e.target.value || null)}
+        aria-invalid={highlight ? true : undefined}
+      >
+        <option value="">{t('form.empty')}</option>
+        <option value="Male">{t('sex.male')}</option>
+        <option value="Female">{t('sex.female')}</option>
+      </select>
+    </label>
+  )
+}
+
 function normalizePetForForm(pet) {
   if (!pet) return {}
   return {
     ...pet,
     species: normalizeSpeciesForStorage(pet.species) ?? pet.species ?? null,
+    sex: normalizeSexForStorage(pet.sex) ?? pet.sex ?? null,
   }
 }
 
@@ -286,11 +317,8 @@ export default function RecordForm({
             onChange={(v) => setPet('breed', v)}
             editing={editing}
           />
-          <Field
-            label={t('form.sex')}
-            fieldPath="pet.sex"
+          <SexField
             value={data.pet?.sex}
-            displayValue={displaySex(data.pet?.sex, locale, t)}
             highlight={fieldHighlight('pet.sex', data.pet?.sex)}
             onChange={(v) => setPet('sex', v)}
             editing={editing}

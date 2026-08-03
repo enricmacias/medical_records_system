@@ -12,7 +12,7 @@ A small modular monolith:
 ```text
 React ──HTTP──▶ FastAPI
                   ├── adapters/document_extractor   → raw text (pdfplumber + python-docx)
-                  ├── adapters/text_hints       → layout/visit/diagnosis + inline compound demographics + label-free species/breed
+                  ├── adapters/text_hints       → layout/visit/diagnosis + inline compound demographics + label-free species/breed + global inference + name/breed validation
                   ├── adapters/llm (ollama|fake)→ demographics ± clinical narrative LLM; FakeLLM
                   ├── adapters/clinical_summary → heuristic clinical summary + optional LLM polish → clinical.history
                   └── services/storage          → SQLite + files
@@ -70,7 +70,7 @@ Clinical structuring uses **two optional LLM passes** after heuristics (see `spe
 
 **Heuristic sufficiency (clinical):** at least one dated visit block, or diagnosis hints, or medication hints.
 
-**Demographics LLM:** skipped when `pet.name` is hinted (`LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED`); see data-model extraction note §4 (caveat on `pet.name`-only skip).
+**Demographics LLM:** skipped when a **validated** `pet.name` is present in hints (`validated_pet_name`; see data-model extraction note §4). Caveat: skip is keyed on validated name only — junk tokens do not skip the LLM.
 
 **On LLM timeout/error:** keep heuristic clinical fields and heuristic summary; complete the record when possible; do not fail solely because Ollama timed out.
 
@@ -100,7 +100,7 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 | `LLM_PROVIDER` | `ollama` | `ollama` or `fake` |
 | `PROCESSING_MODE` | `async` | `async` or `sync` |
 | `LLM_CLINICAL_MODE` | `hybrid` | `heuristic` \| `hybrid` \| `llm` |
-| `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED` | `true` | Skip demographics LLM when `pet.name` found in heuristics (see data-model extraction note §4) |
+| `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED` | `true` | Skip demographics LLM when **validated** `pet.name` found in heuristics (see data-model extraction note §4) |
 | `OLLAMA_TIMEOUT_SECONDS` | `90` | HTTP timeout for Ollama calls |
 | `OLLAMA_NUM_PREDICT` | `384` | Max generated tokens when LLM is called |
 | `OLLAMA_NUM_CTX` | `4096` | Context window for Ollama options |
@@ -130,10 +130,10 @@ Health `ollama: unavailable` is **informational** — it does not by itself bloc
 
 ## Testing strategy
 
-- Backend unit: document extractors (pdfplumber + python-docx); heuristics (inline compound demographics in `tests/test_inline_demographics.py`; label-free species/breed in `tests/test_unlabeled_species_breed.py`); clinical summary in `tests/test_clinical_summary.py`; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
+- Backend unit: document extractors (pdfplumber + python-docx); heuristics (inline compound demographics in `tests/test_inline_demographics.py`; label-free species/breed in `tests/test_unlabeled_species_breed.py`; global inference in `tests/test_global_demographic_inference.py`; demographic validation in `tests/test_demographic_validation.py`; breed catalog in `tests/test_pet_breed_validation.py`); clinical summary in `tests/test_clinical_summary.py`; hybrid/heuristic Ollama paths without network; Pydantic schema; FakeLLM
 - Backend unit/service: async returns `processing`; sync completes; `process_record` failure path; progressive processing in `tests/test_progressive_processing.py` (partial persistence, `processing` on GET, callback wiring)
 - Backend API: TestClient with `LLM_PROVIDER=fake` and both `PROCESSING_MODE=sync` and `async`
-- Frontend unit (Vitest + Testing Library): clinical summary display (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); **UI i18n** (`LanguageContext`, `LanguageToggle`, `LanguageSuggestionBanner`, `formatDate`, `displayValues`); **`fieldConfidence`** highlight rules; RecordForm (six pet fields, Owner, summary read-only, preserved on save, **clinical summary progress while processing**, **localized labels and date display**, **missing/low-confidence field highlighting** including edit-mode persistence); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice, **partial structured data and processing panel while processing**, **language suggestion**
+- Frontend unit (Vitest + Testing Library): clinical summary display (`buildClinicalResume`, 2000-char cap, paragraph preservation); species normalization (`Dog`/`Cat`, including `CANINA`/`Felina`); **sex normalization** (`normalizeSexForStorage`, `displayValues`, sex select in RecordForm); **UI i18n** (`LanguageContext`, `LanguageToggle`, `LanguageSuggestionBanner`, `formatDate`, `displayValues`); **`fieldConfidence`** highlight rules; RecordForm (six pet fields, Owner, summary read-only, preserved on save, **clinical summary progress while processing**, **localized labels and date display**, **missing/low-confidence field highlighting** including edit-mode persistence); RecordPage extracted-text toggle, edit/cancel discard dialog, save success notice, **partial structured data and processing panel while processing**, **language suggestion**
 - Manual: live Ollama demo path in acceptance checklist (optional when hybrid heuristics suffice); include at least one PDF or .docx with inline compound header lines and/or label-free species/breed header lines; optionally verify polished clinical summary when Ollama is available
 
 ## Future extension points

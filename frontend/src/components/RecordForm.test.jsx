@@ -94,7 +94,7 @@ describe('RecordForm', () => {
     expect(screen.getByText('Macho')).toBeInTheDocument()
   })
 
-  it('keeps raw sex value when saving in edit mode', async () => {
+  it('keeps canonical sex value when saving in edit mode', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
 
@@ -112,7 +112,32 @@ describe('RecordForm', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(onSave.mock.calls[0][0].pet.sex).toBe('M')
+    expect(onSave.mock.calls[0][0].pet.sex).toBe('Male')
+  })
+
+  it('saves Female when sex select is changed in edit mode', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+
+    renderWithI18n(
+      <div>
+        <button type="submit" form={STRUCTURED_FORM_ID}>Save</button>
+        <RecordForm
+          initial={{ ...sampleRecord, pet: { ...sampleRecord.pet, sex: 'Female' } }}
+          onSave={onSave}
+          editing={true}
+          onDirtyChange={vi.fn()}
+        />
+      </div>,
+      { locale: 'en' },
+    )
+
+    const sexSelect = screen.getByLabelText('Sex')
+    await user.selectOptions(sexSelect, 'Male')
+    await user.selectOptions(sexSelect, 'Female')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSave.mock.calls[0][0].pet.sex).toBe('Female')
   })
 
   it('formats dates embedded in clinical summary for display', () => {
@@ -202,7 +227,7 @@ describe('RecordForm', () => {
       name: 'Marley',
       species: 'Dog',
       breed: 'Golden Retriever',
-      sex: 'M',
+      sex: 'Male',
       date_of_birth: '04/10/19',
       microchip: '941000024967769',
     })

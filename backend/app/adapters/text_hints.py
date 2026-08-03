@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.adapters.pet_breed_catalog import is_known_dog_or_cat_breed
+
 
 _LABEL_HINTS = {
     "name": [r"nombre", r"name", r"paciente", r"mascota"],
@@ -128,6 +130,815 @@ _STANDALONE_SPECIES_LINE = re.compile(
 )
 _FEMALE_SPECIES_FORMS = frozenset({"canina", "felina", "gata"})
 
+_PET_NAME_LABEL_WITH_COLON = re.compile(
+    r"(?i)(?:pet|mascota|paciente|patient)\s*:\s*([^,\n|]+)",
+)
+_PET_NAME_NOMBRE_LABEL = re.compile(
+    r"(?i)(?:nombre|name)\s*:\s*([^,\n|]+)",
+)
+_PET_NAME_LABEL_WORD = re.compile(
+    r"(?i)(?:patient|pet|paciente|mascota)\s+([A-Za-zÁÉÍÓÚÜÑ][\wÁÉÍÓÚÜÑ'-]+)\b",
+)
+_STANDALONE_CAPS_NAME_LINE = re.compile(
+    r"^(?P<name>[A-ZÁÉÍÓÚÜÑ]{2,}(?:'[A-ZÁÉÍÓÚÜÑ]+)?)\s*[.:]?\s*$",
+)
+_ALL_CAPS_NAME_TOKEN = re.compile(r"\b([A-ZÁÉÍÓÚÜÑ]{2,}(?:'[A-ZÁÉÍÓÚÜÑ]+)?)\b")
+
+_PET_NAME_REJECT_FOLLOWING = frozenset(
+    {
+        "record",
+        "datos",
+        "del",
+        "de",
+        "la",
+        "el",
+        "los",
+        "las",
+        "the",
+        "information",
+        "info",
+        "file",
+        "chart",
+        "history",
+        "historial",
+        "consulta",
+        "visit",
+        "visita",
+        "revision",
+        "rutina",
+        "routine",
+        "check",
+        "information",
+    }
+)
+
+_PET_NAME_SKIP_TOKENS = frozenset(
+    {
+        "clinica",
+        "clínica",
+        "veterinaria",
+        "veterinario",
+        "historial",
+        "consulta",
+        "nombre",
+        "name",
+        "especie",
+        "species",
+        "raza",
+        "breed",
+        "sexo",
+        "sex",
+        "canino",
+        "canina",
+        "felino",
+        "felina",
+        "perro",
+        "gato",
+        "dog",
+        "cat",
+        "macho",
+        "hembra",
+        "male",
+        "female",
+        "fertil",
+        "estado",
+        "peso",
+        "propietario",
+        "cliente",
+        "owner",
+        "tutor",
+        "fecha",
+        "nacimiento",
+        "microchip",
+        "chip",
+        "datos",
+        "mascota",
+        "paciente",
+        "patient",
+        "pet",
+        "historia",
+        "revision",
+        "rutina",
+        "routine",
+        "check",
+        "visit",
+        "visita",
+        "madrid",
+        "boadilla",
+        "sunshine",
+        "vet",
+        "clinic",
+        "central",
+        "parque",
+        "oeste",
+        "kivet",
+        "ave",
+        "reptil",
+        "domestic",
+        "shorthair",
+        "labrador",
+        "retriever",
+        "terrier",
+        "persa",
+        "yorkshire",
+        "phone",
+        "email",
+        "address",
+        "owner",
+        "tel",
+        "teléfono",
+        "telefono",
+        "correo",
+        "direccion",
+        "dirección",
+        "domicilio",
+    }
+)
+
+_COMMON_NON_NAME_WORDS = frozenset(
+    {
+        # Document / linguistic meta (EN)
+        "summary",
+        "grammar",
+        "punctuation",
+        "introduction",
+        "conclusion",
+        "abstract",
+        "appendix",
+        "section",
+        "chapter",
+        "paragraph",
+        "sentence",
+        "document",
+        "page",
+        "footer",
+        "header",
+        "title",
+        "subtitle",
+        "note",
+        "notes",
+        "reminder",
+        "warning",
+        "error",
+        "example",
+        "sample",
+        "template",
+        "format",
+        "formatting",
+        "style",
+        "spelling",
+        "vocabulary",
+        "syntax",
+        "language",
+        "english",
+        "spanish",
+        "content",
+        "contents",
+        "index",
+        "table",
+        "figure",
+        "reference",
+        "references",
+        "citation",
+        "attachment",
+        "subject",
+        "topic",
+        "theme",
+        "overview",
+        "outline",
+        "draft",
+        "final",
+        "copy",
+        "original",
+        "duplicate",
+        "version",
+        "revision",
+        "edition",
+        "text",
+        "typing",
+        "writing",
+        "reading",
+        "lesson",
+        "exercise",
+        "homework",
+        "assignment",
+        "question",
+        "answer",
+        "definition",
+        "meaning",
+        "translation",
+        "description",
+        "instruction",
+        "instructions",
+        "guideline",
+        "guidelines",
+        "policy",
+        "policies",
+        "agreement",
+        "contract",
+        "terms",
+        "conditions",
+        "disclaimer",
+        "copyright",
+        "trademark",
+        "license",
+        "permission",
+        "approval",
+        "signature",
+        "signed",
+        "unsigned",
+        "blank",
+        "empty",
+        "null",
+        "none",
+        "unknown",
+        "pending",
+        "missing",
+        "incomplete",
+        "complete",
+        "completed",
+        "active",
+        "inactive",
+        "enabled",
+        "disabled",
+        "true",
+        "false",
+        "yes",
+        "no",
+        "male",
+        "female",
+        # Document / linguistic meta (ES)
+        "resumen",
+        "gramática",
+        "gramatica",
+        "puntuación",
+        "puntuacion",
+        "introducción",
+        "introduccion",
+        "conclusión",
+        "párrafo",
+        "parrafo",
+        "sección",
+        "seccion",
+        "capítulo",
+        "capitulo",
+        "documento",
+        "página",
+        "pagina",
+        "nota",
+        "notas",
+        "ejemplo",
+        "muestra",
+        "plantilla",
+        "formato",
+        "estilo",
+        "ortografía",
+        "ortografia",
+        "vocabulario",
+        "sintaxis",
+        "idioma",
+        "inglés",
+        "ingles",
+        "español",
+        "espanol",
+        "contenido",
+        "índice",
+        "indice",
+        "tabla",
+        "figura",
+        "referencia",
+        "referencias",
+        "asunto",
+        "tema",
+        "borrador",
+        "copia",
+        "original",
+        "duplicado",
+        "versión",
+        "version",
+        "revisión",
+        "texto",
+        "escritura",
+        "lectura",
+        "lección",
+        "leccion",
+        "ejercicio",
+        "tarea",
+        "pregunta",
+        "respuesta",
+        "definición",
+        "definicion",
+        "significado",
+        "traducción",
+        "traduccion",
+        "descripción",
+        "descripcion",
+        "instrucción",
+        "instruccion",
+        "instrucciones",
+        "política",
+        "politica",
+        "acuerdo",
+        "contrato",
+        "condiciones",
+        "permiso",
+        "aprobación",
+        "aprobacion",
+        "firma",
+        "vacío",
+        "vacio",
+        "ninguno",
+        "desconocido",
+        "pendiente",
+        "incompleto",
+        "completo",
+        "completado",
+        # Clinical / admin generic
+        "diagnosis",
+        "diagnóstico",
+        "diagnostico",
+        "treatment",
+        "tratamiento",
+        "medication",
+        "medications",
+        "prescription",
+        "receta",
+        "vaccine",
+        "vacuna",
+        "vaccination",
+        "procedure",
+        "procedimiento",
+        "examination",
+        "examen",
+        "assessment",
+        "evaluation",
+        "observation",
+        "observación",
+        "observacion",
+        "symptom",
+        "symptoms",
+        "síntoma",
+        "sintoma",
+        "condition",
+        "disorder",
+        "disease",
+        "enfermedad",
+        "allergy",
+        "alergia",
+        "anesthesia",
+        "anestesia",
+        "surgery",
+        "cirugía",
+        "cirugia",
+        "hospitalization",
+        "discharge",
+        "admission",
+        "billing",
+        "invoice",
+        "payment",
+        "total",
+        "subtotal",
+        "quantity",
+        "amount",
+        "price",
+        "cost",
+        "balance",
+        "account",
+        "statement",
+        "report",
+        "reports",
+        "informe",
+        "informes",
+        "result",
+        "results",
+        "resultado",
+        "resultados",
+        "laboratory",
+        "laboratorio",
+        "analysis",
+        "análisis",
+        "analisis",
+        "radiograph",
+        "radiografía",
+        "radiografia",
+        "ultrasound",
+        "ecografía",
+        "ecografia",
+        "appointment",
+        "cita",
+        "schedule",
+        "calendar",
+        "reminder",
+        "followup",
+        "follow-up",
+        "seguimiento",
+    }
+)
+
+# Demographic heuristics scan the header region (first N lines of raw_text).
+HEADER_SCAN_LINES = 100
+_INFERENCE_SAMPLE_CHARS = 8000
+
+
+def _header_sample(text: str) -> str:
+    """First HEADER_SCAN_LINES lines used for demographic hints and global inference."""
+    sample = "\n".join(text.splitlines()[:HEADER_SCAN_LINES])
+    if len(sample) > _INFERENCE_SAMPLE_CHARS:
+        return sample[:_INFERENCE_SAMPLE_CHARS]
+    return sample
+
+
+def _clean_inferred_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    cleaned = re.sub(r"^\|+\s*", "", cleaned)
+    cleaned = re.sub(r"\s*\|+$", "", cleaned)
+    cleaned = cleaned.strip(" ,;")
+    if not cleaned or cleaned in ("—", "-", "n/a", "n/d"):
+        return None
+    return cleaned
+
+
+def _is_pipe_table_row_value(value: str) -> bool:
+    """True when a label matcher captured a whole Word table row instead of one cell."""
+    return "|" in value
+
+
+def _is_likely_pet_proper_name(name: str) -> bool:
+    """Reject generic document words that are not plausible pet proper names."""
+    candidate = name.strip()
+    if not candidate:
+        return False
+    tokens = [t.strip(".,;:'\"") for t in re.split(r"[\s\-]+", candidate)]
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return False
+    if len(tokens) > 2:
+        return False
+    for token in tokens:
+        lower = token.lower()
+        if lower in _COMMON_NON_NAME_WORDS:
+            return False
+        if lower in _PET_NAME_SKIP_TOKENS or lower in _PET_NAME_REJECT_FOLLOWING:
+            return False
+        if not re.search(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]", token):
+            return False
+    return True
+
+
+def validated_pet_name(value: str | None) -> str | None:
+    """Return the name when it passes structural and proper-name checks; else None."""
+    if value is None or not str(value).strip():
+        return None
+    name, _ = _split_name_and_nacimiento(str(value).strip())
+    candidate = (name or str(value).strip()).strip()
+    if not _is_plausible_pet_name_candidate(candidate):
+        return None
+    if not _is_likely_pet_proper_name(candidate):
+        return None
+    return candidate
+
+
+def resolve_pet_name(
+    record_name: str | None,
+    hint_name: str | None,
+) -> str | None:
+    """Prefer a validated record name; fall back to a validated hint name."""
+    validated = validated_pet_name(record_name)
+    if validated:
+        return validated
+    return validated_pet_name(hint_name)
+
+
+def _add_pet_name_candidate(candidates: list[str], seen: set[str], raw: str | None) -> None:
+    if not raw:
+        return
+    cleaned = _clean_inferred_value(raw)
+    if not cleaned:
+        return
+    if re.search(r"(?i)propietario|owner|cliente|tutor", cleaned):
+        return
+    name, _ = _split_name_and_nacimiento(cleaned)
+    value = (name or cleaned).strip()
+    key = value.lower()
+    if key and key not in seen:
+        seen.add(key)
+        candidates.append(value)
+
+
+def _collect_pet_name_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    for pattern in (_PET_NAME_LABEL_WITH_COLON, _PET_NAME_NOMBRE_LABEL):
+        for match in pattern.finditer(text):
+            _add_pet_name_candidate(candidates, seen, match.group(1))
+
+    for match in _PET_NAME_LABEL_WORD.finditer(text):
+        token = _clean_inferred_value(match.group(1))
+        if token and token.lower() not in _PET_NAME_REJECT_FOLLOWING:
+            _add_pet_name_candidate(candidates, seen, token)
+
+    for raw_line in text.splitlines()[:HEADER_SCAN_LINES]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if _SPECIES_BREED_LINE.match(line) or _SPECIES_BREED_SPACE_LINE.match(line):
+            continue
+        if _STANDALONE_SPECIES_LINE.match(line):
+            continue
+
+        standalone = _STANDALONE_CAPS_NAME_LINE.match(line)
+        if standalone:
+            _add_pet_name_candidate(candidates, seen, standalone.group("name"))
+
+        nombre_prefix = re.match(r"(?i)^(?:nombre|name)\s+(.+)$", line)
+        if nombre_prefix:
+            first_token = nombre_prefix.group(1).strip().split()[0]
+            _add_pet_name_candidate(candidates, seen, first_token.strip(".,;"))
+
+        for token_match in _ALL_CAPS_NAME_TOKEN.finditer(line):
+            _add_pet_name_candidate(candidates, seen, token_match.group(1))
+
+    return candidates
+
+
+def validate_and_refine_pet_name(likely: dict[str, str], head: str) -> None:
+    """Drop non-proper-name values and scan for a better pet.name in the header."""
+    current = likely.get("pet.name")
+    if current is not None:
+        validated = validated_pet_name(str(current))
+        if validated:
+            likely["pet.name"] = validated
+        else:
+            likely.pop("pet.name", None)
+    if not likely.get("pet.name"):
+        inferred = infer_pet_name_from_text(head)
+        if inferred:
+            likely["pet.name"] = inferred
+
+
+def _is_plausible_pet_name_candidate(name: str) -> bool:
+    candidate = name.strip()
+    if not candidate or len(candidate) < 2 or len(candidate) > 30:
+        return False
+    lower = candidate.lower()
+    if lower in _PET_NAME_SKIP_TOKENS or lower in _PET_NAME_REJECT_FOLLOWING:
+        return False
+    if _DATE_PATTERN.search(candidate):
+        return False
+    if re.fullmatch(r"\d+", candidate):
+        return False
+    if normalize_species_dog_cat(candidate):
+        return False
+    if normalize_sex_male_female(candidate):
+        return False
+    if re.match(r"(?i)c/\s", candidate):
+        return False
+    if re.search(r"(?i)propietario|owner|cliente|tutor", candidate):
+        return False
+    return True
+
+
+def infer_pet_name_from_text(text: str) -> str | None:
+    """Global fallback: pet name anywhere in header sample (incl. table-ish rows)."""
+    for candidate in _collect_pet_name_candidates(text):
+        validated = validated_pet_name(candidate)
+        if validated:
+            return validated
+    return None
+
+
+_BREED_LABEL_PATTERNS = (
+    re.compile(r"(?i)(?:raza|breed)\s*:\s*\|?\s*([^|]+?)(?=\s*\|)"),
+    re.compile(r"(?i)(?:raza|breed)\s*:\s*([^,\n|]+)"),
+)
+
+
+def validated_breed(value: str | None) -> str | None:
+    """Return breed when structurally plausible and a known dog/cat breed."""
+    if value is None or not str(value).strip():
+        return None
+    cleaned = _normalize_breed_value(_clean_inferred_value(str(value)) or "")
+    if not cleaned or not _is_plausible_breed(cleaned):
+        return None
+    if not is_known_dog_or_cat_breed(cleaned):
+        return None
+    return cleaned
+
+
+def resolve_breed(
+    record_breed: str | None,
+    hint_breed: str | None,
+) -> str | None:
+    """Prefer a validated record breed; fall back to a validated hint breed."""
+    validated = validated_breed(record_breed)
+    if validated:
+        return validated
+    return validated_breed(hint_breed)
+
+
+def _add_breed_candidate(candidates: list[str], seen: set[str], raw: str | None) -> None:
+    if not raw:
+        return
+    cleaned = _normalize_breed_value(_clean_inferred_value(raw) or "")
+    key = _normalize_breed_key_for_dedup(cleaned)
+    if key and key not in seen:
+        seen.add(key)
+        candidates.append(cleaned)
+
+
+def _normalize_breed_key_for_dedup(value: str) -> str:
+    return value.strip().lower()
+
+
+def _collect_breed_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    for pattern in _BREED_LABEL_PATTERNS:
+        for match in pattern.finditer(text):
+            _add_breed_candidate(candidates, seen, match.group(1))
+
+    for raw_line in text.splitlines()[:HEADER_SCAN_LINES]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        compound = _SPECIES_BREED_LINE.match(line)
+        if compound:
+            _add_breed_candidate(candidates, seen, compound.group("breed"))
+            continue
+        space_sep = _SPECIES_BREED_SPACE_LINE.match(line)
+        if space_sep:
+            _add_breed_candidate(candidates, seen, space_sep.group("breed"))
+
+    return candidates
+
+
+def validate_and_refine_breed(likely: dict[str, str], head: str) -> None:
+    """Drop unknown breeds and scan for a recognized dog/cat breed in the header."""
+    current = likely.get("pet.breed")
+    if current is not None:
+        validated = validated_breed(str(current))
+        if validated:
+            likely["pet.breed"] = validated
+        else:
+            likely.pop("pet.breed", None)
+    if not likely.get("pet.breed"):
+        inferred = infer_pet_breed_from_text(head)
+        if inferred:
+            likely["pet.breed"] = inferred
+
+
+def infer_pet_breed_from_text(text: str) -> str | None:
+    for candidate in _collect_breed_candidates(text):
+        validated = validated_breed(candidate)
+        if validated:
+            return validated
+    return None
+
+
+def infer_pet_sex_from_text(text: str) -> str | None:
+    patterns = [
+        r"(?i)(?:sexo|sex)\s*:\s*\|?\s*([^|\n]+?)(?=\s*\||$)",
+        r"(?i)\|\s*(?:sexo|sex)\s*\|\s*([^|\n]+)",
+        r"(?i)(?:sexo|sex)\s*\|\s*([^|\n]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        value = _clean_inferred_value(match.group(1))
+        if value:
+            return normalize_sex_male_female(value)
+    return None
+
+
+def infer_pet_date_of_birth_from_text(text: str) -> str | None:
+    patterns = [
+        r"(?i)(?:f/?nto|f\.?\s*nac(?:imiento)?|fecha\s+de\s+nacimiento|date\s+of\s+birth|dob)\s*:?\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+        r"(?i)nacimiento\s*:\s*(\d{1,2}/\d{1,2}/\d{2,4})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+    iso = re.search(r"(?i)(?:date\s+of\s+birth|dob)\s*:?\s*(\d{4}-\d{2}-\d{2})", text)
+    if iso:
+        return iso.group(1)
+    return None
+
+
+def infer_pet_microchip_from_text(text: str) -> str | None:
+    patterns = [
+        r"(?i)(?:microchip|chip|n[ºo°]?\s*chip)\s*:?\s*\|?\s*(\d{9,20})",
+        r"(?i)(?:microchip|chip)\D{0,12}(\d{9,20})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def infer_owner_name_from_text(text: str) -> str | None:
+    patterns = [
+        r"(?i)(?:owner|propietario|cliente|tutor)\s*:\s*([^,\n|]+)",
+        r"(?i)(?:owner|propietario|cliente|tutor)\s*\|\s*([^|]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        value = _clean_inferred_value(match.group(1))
+        if value and not re.search(r"(?i)nacimiento|microchip", value):
+            return value
+    return None
+
+
+def infer_owner_phone_from_text(text: str) -> str | None:
+    labeled = re.search(
+        r"(?i)(?:tel(?:é|e)fono|telefono|phone|móvil|movil|mobile|tel)\s*:\s*([+\d][\d\s\-().]{6,})",
+        text,
+    )
+    if labeled:
+        return _clean_inferred_value(labeled.group(1))
+    for match in re.finditer(r"(?<!\d)(\+\d{1,3}[-.\s]?\d[\d\s\-().]{7,})(?!\d)", text):
+        candidate = _clean_inferred_value(match.group(1))
+        if candidate and len(re.sub(r"\D", "", candidate)) >= 9:
+            return candidate
+    return None
+
+
+def infer_owner_email_from_text(text: str) -> str | None:
+    labeled = re.search(
+        r"(?i)(?:email|e-mail|correo)\s*:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})",
+        text,
+    )
+    if labeled:
+        return labeled.group(1).strip()
+    match = re.search(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
+    return match.group(0) if match else None
+
+
+def infer_owner_address_from_text(text: str) -> str | None:
+    labeled = re.search(
+        r"(?i)(?:address|dirección|direccion|domicilio)\s*:\s*(.+?)(?:\n|$)",
+        text,
+    )
+    if labeled:
+        value = _clean_inferred_value(labeled.group(1))
+        if value:
+            return value
+    return extract_owner_address(text)
+
+
+_GLOBAL_FIELD_INFERERS: list[tuple[str, Any]] = [
+    ("pet.name", infer_pet_name_from_text),
+    ("pet.breed", infer_pet_breed_from_text),
+    ("pet.sex", infer_pet_sex_from_text),
+    ("pet.date_of_birth", infer_pet_date_of_birth_from_text),
+    ("pet.microchip", infer_pet_microchip_from_text),
+    ("owner.name", infer_owner_name_from_text),
+    ("owner.phone", infer_owner_phone_from_text),
+    ("owner.email", infer_owner_email_from_text),
+    ("owner.address", infer_owner_address_from_text),
+]
+
+
+def apply_global_demographic_inference(hints: dict[str, Any], head: str) -> None:
+    """Fill missing likely_fields via global scan (same strategy as infer_species_from_text)."""
+    likely = hints.get("likely_fields") or {}
+    sample = head
+
+    for field_key, infer_fn in _GLOBAL_FIELD_INFERERS:
+        current = likely.get(field_key)
+        if current is not None and str(current).strip():
+            if not _is_pipe_table_row_value(str(current)):
+                continue
+        inferred = infer_fn(sample)
+        if inferred:
+            likely[field_key] = inferred
+
+    raw_species = likely.get("pet.species")
+    normalized = normalize_species_dog_cat(raw_species)
+    if normalized:
+        likely["pet.species"] = normalized
+    elif not likely.get("pet.species"):
+        inferred_species = infer_species_from_text(sample)
+        if inferred_species:
+            likely["pet.species"] = inferred_species
+
+    normalized_sex = normalize_sex_male_female(likely.get("pet.sex"))
+    if normalized_sex:
+        likely["pet.sex"] = normalized_sex
+
+    _sanitize_compound_pet_name(likely)
+    validate_and_refine_pet_name(likely, sample)
+    validate_and_refine_breed(likely, sample)
+    hints["likely_fields"] = likely
+
 
 def normalize_species_dog_cat(value: str | None) -> str | None:
     """Map Spanish/English species labels to canonical Dog or Cat."""
@@ -143,6 +954,24 @@ def normalize_species_dog_cat(value: str | None) -> str | None:
         return "Dog"
     if _CAT_SPECIES.search(lower):
         return "Cat"
+    return None
+
+
+def normalize_sex_male_female(value: str | None) -> str | None:
+    """Map Spanish/English sex labels to canonical Male or Female."""
+    if value is None or not str(value).strip():
+        return None
+    text = str(value).strip()
+    core = re.sub(r"\s*\([^)]*\)", "", text).strip()
+    lower = core.lower()
+    if lower in ("m", "male", "macho"):
+        return "Male"
+    if lower in ("f", "h", "female", "hembra"):
+        return "Female"
+    if re.search(r"(?i)\bfemale\b|\bhembra\b", lower):
+        return "Female"
+    if re.search(r"(?i)\bmale\b|\bmacho\b", lower):
+        return "Male"
     return None
 
 
@@ -166,14 +995,14 @@ def _normalize_breed_value(value: str) -> str:
 
 def _sex_hint_from_species_token(token: str) -> str | None:
     if token.lower() in _FEMALE_SPECIES_FORMS:
-        return "Hembra"
+        return "Female"
     return None
 
 
 def extract_unlabeled_species_breed_hints(head: str) -> dict[str, str]:
     """Infer species and breed from header lines without Especie/Raza labels."""
     found: dict[str, str] = {}
-    for raw_line in head.splitlines()[:80]:
+    for raw_line in head.splitlines()[:HEADER_SCAN_LINES]:
         line = raw_line.strip()
         if not line:
             continue
@@ -186,7 +1015,9 @@ def extract_unlabeled_species_breed_hints(head: str) -> dict[str, str]:
             if species:
                 found.setdefault("pet.species", species)
             if _is_plausible_breed(breed_part):
-                found.setdefault("pet.breed", breed_part)
+                validated = validated_breed(breed_part)
+                if validated:
+                    found.setdefault("pet.breed", validated)
             sex_hint = _sex_hint_from_species_token(species_token)
             if sex_hint:
                 found.setdefault("pet.sex", sex_hint)
@@ -198,8 +1029,10 @@ def extract_unlabeled_species_breed_hints(head: str) -> dict[str, str]:
             breed_part = _normalize_breed_value(space_sep.group("breed"))
             species = normalize_species_dog_cat(species_token)
             if species and _is_plausible_breed(breed_part):
-                found.setdefault("pet.species", species)
-                found.setdefault("pet.breed", breed_part)
+                validated = validated_breed(breed_part)
+                if validated:
+                    found.setdefault("pet.species", species)
+                    found.setdefault("pet.breed", validated)
                 sex_hint = _sex_hint_from_species_token(species_token)
                 if sex_hint:
                     found.setdefault("pet.sex", sex_hint)
@@ -219,8 +1052,8 @@ def extract_unlabeled_species_breed_hints(head: str) -> dict[str, str]:
 
 
 def infer_species_from_text(text: str) -> str | None:
-    """Infer Dog vs Cat from header/body text when species field is missing or ambiguous."""
-    sample = text[:5000]
+    """Infer Dog vs Cat from header sample when species field is missing or ambiguous."""
+    sample = text[:_INFERENCE_SAMPLE_CHARS]
     labeled = re.search(
         r"(?i)(?:especie|species)\s*:?\s*(canino|canina|felino|felina|perro|gato|dog|cat|canine|feline)",
         sample,
@@ -238,16 +1071,8 @@ def infer_species_from_text(text: str) -> str | None:
 
 
 def apply_species_normalization(hints: dict[str, Any], head: str) -> None:
-    likely = hints.get("likely_fields") or {}
-    raw = likely.get("pet.species")
-    normalized = normalize_species_dog_cat(raw)
-    if normalized:
-        likely["pet.species"] = normalized
-    else:
-        inferred = infer_species_from_text(head)
-        if inferred:
-            likely["pet.species"] = inferred
-    hints["likely_fields"] = likely
+    """Normalize species and run global inference for all demographic fields."""
+    apply_global_demographic_inference(hints, head)
 
 
 def normalize_extracted_text(text: str) -> str:
@@ -424,8 +1249,9 @@ def _split_name_and_nacimiento(text: str) -> tuple[str | None, str | None]:
 
 def _apply_pet_name_hint(likely: dict[str, str], raw_name: str) -> None:
     name, dob = _split_name_and_nacimiento(raw_name)
-    if name:
-        likely["pet.name"] = name
+    validated = validated_pet_name(name or raw_name)
+    if validated:
+        likely["pet.name"] = validated
     if dob:
         likely.setdefault("pet.date_of_birth", dob)
 
@@ -435,8 +1261,11 @@ def _sanitize_compound_pet_name(likely: dict[str, str]) -> None:
     if not raw_name or not re.search(r"nacimiento\s*:", raw_name, flags=re.I):
         return
     name, dob = _split_name_and_nacimiento(raw_name)
-    if name:
-        likely["pet.name"] = name
+    validated = validated_pet_name(name or raw_name)
+    if validated:
+        likely["pet.name"] = validated
+    elif "pet.name" in likely:
+        likely.pop("pet.name", None)
     if dob:
         likely["pet.date_of_birth"] = dob
 
@@ -444,7 +1273,7 @@ def _sanitize_compound_pet_name(likely: dict[str, str]) -> None:
 def extract_inline_demographic_hints(head: str) -> dict[str, str]:
     """Parse multi-field and inline Label: value lines common in clinic PDF headers."""
     found: dict[str, str] = {}
-    lines = head.splitlines()[:80]
+    lines = head.splitlines()[:HEADER_SCAN_LINES]
 
     for raw_line in lines:
         line = raw_line.strip()
@@ -453,7 +1282,9 @@ def extract_inline_demographic_hints(head: str) -> dict[str, str]:
 
         name_dob = _NAME_NACIMIENTO_LINE.match(line)
         if name_dob:
-            found.setdefault("pet.name", name_dob.group(1).strip())
+            validated_name = validated_pet_name(name_dob.group(1).strip())
+            if validated_name:
+                found.setdefault("pet.name", validated_name)
             found.setdefault("pet.date_of_birth", name_dob.group(2).strip())
             continue
 
@@ -480,7 +1311,7 @@ def extract_inline_demographic_hints(head: str) -> dict[str, str]:
 
 def build_layout_hints(text: str) -> dict[str, Any]:
     """Produce non-authoritative hints from common ES/EN clinic header labels."""
-    head = "\n".join(text.splitlines()[:80])
+    head = _header_sample(text)
     hints: dict[str, Any] = {
         "language_hint": detect_language_hint(text),
         "visit_dates_found": extract_visit_dates(text)[:20],
@@ -509,7 +1340,9 @@ def build_layout_hints(text: str) -> dict[str, Any]:
         head,
     )
     if nombre_line:
-        hints["likely_fields"]["pet.name"] = nombre_line.group(1).strip()
+        pet_name = validated_pet_name(nombre_line.group(1).strip())
+        if pet_name:
+            hints["likely_fields"]["pet.name"] = pet_name
         hints["likely_fields"]["owner.name"] = nombre_line.group(2).strip()
 
     for raw_line in head.splitlines():
@@ -533,7 +1366,9 @@ def build_layout_hints(text: str) -> dict[str, Any]:
         head,
     )
     if raza:
-        hints["likely_fields"]["pet.breed"] = raza.group(1).strip()
+        validated = validated_breed(raza.group(1).strip())
+        if validated:
+            hints["likely_fields"]["pet.breed"] = validated
 
     sexo = re.search(r"(?im)^sexo\s+([MHFAmfha]|Macho|Hembra|Male|Female)\b", head)
     if sexo:
@@ -563,8 +1398,14 @@ def build_layout_hints(text: str) -> dict[str, Any]:
         match = re.search(rf"(?im)^(?:{label})\s*[:\-]?\s+(.+?)\s*$", head)
         if match:
             value = match.group(1).strip()
+            if _is_pipe_table_row_value(value):
+                continue
             if target == "pet.name":
                 _apply_pet_name_hint(hints["likely_fields"], value)
+            elif target == "pet.breed":
+                validated = validated_breed(value)
+                if validated:
+                    hints["likely_fields"][target] = validated
             else:
                 hints["likely_fields"][target] = value
 
@@ -578,6 +1419,8 @@ def build_layout_hints(text: str) -> dict[str, Any]:
     _sanitize_compound_pet_name(hints["likely_fields"])
 
     apply_species_normalization(hints, head)
+    validate_and_refine_pet_name(hints["likely_fields"], head)
+    validate_and_refine_breed(hints["likely_fields"], head)
 
     return hints
 

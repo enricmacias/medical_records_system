@@ -18,7 +18,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 
 1. **Spec-anchored SDD** — behavior lives in `specs/` before code.
 2. **Adapter interfaces** — document extractors and LLM can be swapped without API changes.
-3. **Hybrid extraction** — heuristics first (inline compound demographics, label-free species/breed, visit blocks); optional LLM for weak clinical hints (narrative) and/or summary polish; heuristic clinical summary always generated; timeout falls back to heuristics; species normalized to Dog/Cat when inferable.
+3. **Hybrid extraction** — heuristics first (inline compound demographics, label-free species/breed, global inference, pet name/breed validation, visit blocks); species normalized to Dog/Cat and sex to Male/Female when inferable; optional LLM for weak clinical hints (narrative) and/or summary polish; heuristic clinical summary always generated; timeout falls back to heuristics.
 4. **Async by default** — upload returns `processing`; UI polls until `completed`/`failed`; partial pet/owner/meta and `processing` percent/messages appear before clinical summary completes.
 5. **Human-in-the-loop** — pet (six demographic fields) and owner are editable; clinical summary and meta are read-only in v1. Site UI in English or Spanish (toggle); document language separate (`meta.source_language`). **Confidence UX** highlights missing and uncertain fields from `meta` without API changes.
 6. **Fake LLM** — tests and demos work without GPU/model download.

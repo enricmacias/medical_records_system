@@ -74,10 +74,10 @@ The `pet` object has **exactly six** fields. These are the only animal demograph
 
 | API field | UI label (EN) | UI label (ES) | Notes |
 |---|---|---|---|
-| `pet.name` | Name | Nombre | Animal name only — never a compound header string. **Value not translated** by site language. |
+| `pet.name` | Name | Nombre | Animal name only — never a compound header string or generic document word. **Validated on extraction** (proper-name filter); invalid candidates dropped. **Value not translated** by site language. Manual PATCH accepts any non-empty string. |
 | `pet.species` | Species | Especie | Stored canonical **`Dog`** or **`Cat`** when normalized; displayed localized (Dog/Perro, Cat/Gato). |
-| `pet.breed` | Breed | Raza | Free-text breed when present; value from document, not translated. |
-| `pet.sex` | Sex | Sexo | Stored as extracted (e.g. M, H, Macho); **display** localized (Male/Macho, Female/Hembra) in read-only mode. |
+| `pet.breed` | Breed | Raza | On **extraction**, only recognized dog/cat breeds from `adapters/pet_breed_catalog.py` are kept; unknown tokens are omitted (field left empty). On **manual PATCH**, free-text — not catalog-validated. Value not translated. |
+| `pet.sex` | Sex | Sexo | Stored canonical **`Male`** / **`Female`** when normalized; **display** localized (Male/Macho, Female/Hembra). Edit mode uses a select; save normalizes recognizable codes. |
 | `pet.date_of_birth` | Date of birth | Fecha de nacimiento | **Stored** in original clinic format or ISO; **display** uses long date with month name and full year in site language (see UI localization). |
 | `pet.microchip` | Microchip | Microchip | Chip number when present. **Value not translated** by site language. |
 
@@ -135,7 +135,7 @@ The structured form shows **only** these sections. **Section titles and field la
 
 **i18n keys (frontend):** `form.lowConfidenceNotice`, `form.flagMissing`, `form.flagLowConfidence`, `form.confidenceLabel`, `form.languageLabel`, `form.missing` (Meta summary list); legacy `form.confidence` / `form.language` templates retained but v1 UI uses split label + value for confidence/language rows.
 
-**Edit interaction:** Pet and Owner fields are read-only by default. **Edit** enables those inputs only and is **disabled** while `status=processing`. **Clinical summary** and **Meta** remain read-only. In **edit mode**, inputs show **raw stored values** (e.g. `M`, `04/10/19`); species select shows localized labels (Perro/Gato) but saves `Dog`/`Cat`. **Save corrections** PATCHes `structured_data`; **Cancel** discards unsaved edits (confirm when dirty).
+**Edit interaction:** Pet and Owner fields are read-only by default. **Edit** enables those inputs only and is **disabled** while `status=processing`. **Clinical summary** and **Meta** remain read-only. In **edit mode**, species and sex selects show localized labels (Perro/Gato, Macho/Hembra) but save canonical `Dog`/`Cat` and `Male`/`Female`; other pet fields show raw stored values (e.g. `04/10/19`). **Save corrections** PATCHes `structured_data`; **Cancel** discards unsaved edits (confirm when dirty).
 
 **Save semantics:** the form sends only `pet` (six fields), `owner`, `clinical.history` (preserved from load), and `meta` (preserved from load). There is no Medications section and no other clinical or visit fields in the UI or PATCH payload.
 
@@ -159,13 +159,14 @@ v1 supports **English** and **Spanish** for the **site UI** only (header toggle)
 - `meta.extraction_confidence` defaults to `low` if omitted
 - `meta.missing_fields` lists paths among **persisted** fields that are null/empty after extraction (final list from `PERSISTED_MISSING_PATHS`; see Confidence UX)
 - Clinical summary: generation truncates to **2000** characters; UI displays up to **2000**
-- On PATCH, client normalizes `pet.species` to **`Dog`** or **`Cat`** when recognizable
+- On PATCH, client normalizes `pet.species` to **`Dog`** or **`Cat`** and `pet.sex` to **`Male`** or **`Female`** when recognizable (`normalizeSpeciesForStorage` / `normalizeSexForStorage`); `pet.breed` is trimmed but **not** catalog-validated on save
+- **Extraction-only validation** (backend heuristics + structurer fallbacks): `validated_pet_name()` rejects non-proper names; `validated_breed()` requires a match in `pet_breed_catalog`; `resolve_pet_name()` / `resolve_breed()` drop invalid LLM output and prefer valid hints; failed validation leaves the field **empty** (not the rejected token)
 
 ## Extraction notes
 
 Structuring uses a wider **workspace** (`ExtractionRecord` in `domain/extraction_models.py`) with visit blocks, medications, diagnosis, chief complaint, etc. At the end of structuring, `to_persisted_record()` writes only the slim JSON above.
 
-1. **Heuristics first** (`adapters/text_hints.py`): normalize text; detect language; parse Spanish/English labels; chip/clinic/address; split dated visit blocks; diagnosis and medication keyword hints; **inline compound demographic lines** and **label-free species/breed header patterns** (below). Demographic heuristics scan the **header region (first ~80 lines)**.
+1. **Heuristics first** (`adapters/text_hints.py`): normalize text; detect language; parse Spanish/English labels; chip/clinic/address; split dated visit blocks; diagnosis and medication keyword hints; **inline compound demographic lines** and **label-free species/breed header patterns** (below). Demographic heuristics scan the **header region (first ~100 lines)**. **Global inference fallbacks** (`infer_*_from_text`) fill any still-missing pet/owner demographic fields by scanning the header sample for labeled and pipe-table patterns (same strategy as `infer_species_from_text`). **Pet name inference** also treats the word after `patient` / `pet` / `paciente` / `mascota` (with or without `:`) as the name when plausible, scans the header for standalone **ALL-CAPS** tokens/lines (rejecting clinic labels, species, breeds, and other header noise), and **rejects generic non-name words** (e.g. Summary, Grammar, punctuation) — invalid candidates are dropped and the scan continues for a proper pet name.
 2. **Inline compound demographics** (header region):
    - **`NAME - Nacimiento: DATE`** → `pet.name`, `pet.date_of_birth`
    - **`Nombre NAME - Nacimiento: DATE`** — same split after the `Nombre` prefix
@@ -174,12 +175,12 @@ Structuring uses a wider **workspace** (`ExtractionRecord` in `domain/extraction
    - Compound-name repair when generic `Nombre`/`Name` captures the full line into `pet.name`
 3. **Label-free species and breed** (header region):
    - Standalone species line (`Canino`, `Dog`, `Cat`) → `pet.species` (normalized to `Dog` / `Cat`)
-   - Dash compound (`CANINA - YORKSHIRE TERRIER`) → species + breed; feminine tokens may hint `Hembra` for sex
+   - Dash compound (`CANINA - YORKSHIRE TERRIER`) → species + breed; feminine tokens may hint `Female` for sex
    - Space-separated (`Felina Persa`) → species + breed
    - Labeled `Especie` / `Raza` take precedence over unlabeled lines
-   - Breed plausibility: reject address fragments, dates, demographic noise
-4. **Demographics LLM:** if `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED=true` and `pet.name` is hinted, skip demographics LLM and build from hints; otherwise try Ollama demographics and fall back to hints on error.
-   - **Caveat:** skip is keyed only on `pet.name` today. A wrong or compound `pet.name` can still skip the LLM — inline compound and unlabeled heuristics mitigate this.
+   - Breed plausibility: reject address fragments, dates, demographic noise; **known breed validation** via `pet_breed_catalog` rejects non-catalog values (e.g. Summary, Grammar) and continues scanning for a recognized dog/cat breed (English and Spanish names; prefix match e.g. `Labrador` → `Labrador Retriever`)
+4. **Demographics LLM:** if `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED=true` and a **validated** `pet.name` is present in hints (`validated_pet_name`), skip demographics LLM and build from hints; otherwise try Ollama demographics and fall back to hints on error.
+   - **Caveat:** skip is keyed on **validated** `pet.name` only. Junk tokens (e.g. Summary) do **not** count as hinted. Compound or wrong names that pass validation can still skip the LLM — inline compound, unlabeled, and global inference mitigate this.
 5. **Clinical workspace (`LLM_CLINICAL_MODE`):** populate workspace clinical fields via heuristics ± optional **clinical narrative** LLM (`ClinicalNarrative`). These fields are **not persisted**; they feed clinical summary generation. See `specs/architecture.md` for narrative vs polish gating.
 6. **Clinical summary (`adapters/clinical_summary.py`):** always run at end of structuring — heuristic prose into `clinical.history`; optional **summary polish** LLM in `hybrid`/`llm` modes. FakeLLM: heuristic summary only.
 7. **Re-processing:** demographics and clinical summary refresh on **new upload** or when processing runs again; no separate re-process API in v1.
@@ -195,6 +196,6 @@ Both formats produce a single `raw_text` string fed into the same heuristics + L
 
 **Word limitations (v1):** headers/footers, text boxes, footnotes, embedded objects, and image-only content are **not** extracted. Image-only or scanned content inside a .docx is out of scope (same as scanned PDFs — no OCR). Password-protected or corrupt .docx files may fail extraction → `status=failed` with `error_message`.
 
-**Heuristic assumptions:** layout heuristics (header region ~80 lines, inline compound lines, label-free species/breed) operate on **line-oriented plain text**. PDF two-column layout may be merged by pdfplumber; Word loses column structure when flattened to paragraphs — extraction quality may vary by template. Multi-visit historiales in either format use the same visit-block heuristics once `raw_text` is available.
+**Heuristic assumptions:** layout heuristics (header region ~100 lines, inline compound lines, label-free species/breed) operate on **line-oriented plain text**. PDF two-column layout may be merged by pdfplumber; Word loses column structure when flattened to paragraphs — **global inference** re-parses pipe-separated table rows (e.g. `Breed: | Domestic Shorthair | Sex | Female`) into separate fields. Multi-visit historiales in either format use the same visit-block heuristics once `raw_text` is available.
 
 **Empty extraction:** if `raw_text` is empty after extraction (blank PDF, empty .docx, or scanned PDF), structuring may yield low confidence and sparse structured data; unrecoverable extractor errors set `status=failed`.

@@ -116,7 +116,9 @@ Update structured data after human review.
 **404** — not found  
 **422** — invalid schema
 
-Clients may send `pet.species` as **`Dog`** or **`Cat`** (v1 UI normalizes Spanish/English tokens on save). The v1 UI edits **pet** (six demographic fields) and **owner** only. See `specs/data-model.md` for the full persisted shape.
+Clients may send `pet.species` as **`Dog`** or **`Cat`** and `pet.sex` as **`Male`** or **`Female`** (v1 UI normalizes Spanish/English tokens on save via species/sex selects). The v1 UI edits **pet** (six demographic fields) and **owner** only. See `specs/data-model.md` for the full persisted shape.
+
+Extraction may omit `pet.name` or `pet.breed` when values fail backend validation (field `null` rather than storing rejected tokens). PATCH does not re-run catalog or proper-name validation on breed/name.
 
 `clinical.history` (**clinical summary**) is **system-generated** on upload/re-process. The v1 UI does not edit it; PATCH preserves the loaded value. Backend does not enforce the 2000-character cap on PATCH (generation truncates at extraction time).
 

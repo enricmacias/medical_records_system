@@ -32,7 +32,7 @@ class PetInfo(BaseModel):
     )
     breed: str | None = Field(default=None, description="Breed / Raza.")
     sex: str | None = Field(
-        default=None, description="Sex / Sexo, e.g. M, H, Male, Female."
+        default=None, description="Sex / Sexo — canonical Male or Female when normalized."
     )
     date_of_birth: str | None = Field(
         default=None,

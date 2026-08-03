@@ -5,6 +5,7 @@ import {
   buildStructuredPetPayload,
   displaySpecies,
   isStructuredRecordDirty,
+  normalizeSexForStorage,
   normalizeSpeciesForStorage,
 } from './recordDisplay'
 
@@ -25,6 +26,17 @@ describe('species normalization', () => {
   })
 })
 
+describe('sex normalization', () => {
+  it('maps Spanish and English labels to Male or Female', () => {
+    expect(normalizeSexForStorage('M')).toBe('Male')
+    expect(normalizeSexForStorage('Macho')).toBe('Male')
+    expect(normalizeSexForStorage('H')).toBe('Female')
+    expect(normalizeSexForStorage('Hembra')).toBe('Female')
+    expect(normalizeSexForStorage('Female (Spayed)')).toBe('Female')
+    expect(normalizeSexForStorage('unknown')).toBeNull()
+  })
+})
+
 describe('buildStructuredPetPayload', () => {
   it('returns only the six structured pet fields', () => {
     expect(
@@ -40,9 +52,29 @@ describe('buildStructuredPetPayload', () => {
       name: 'ALYA',
       species: 'Dog',
       breed: 'Labrador',
-      sex: 'F',
+      sex: 'Female',
       date_of_birth: '05/07/2018',
       microchip: '123',
+    })
+  })
+
+  it('normalizes legacy sex codes and leaves breed as trimmed text', () => {
+    expect(
+      buildStructuredPetPayload({
+        name: 'Marley',
+        species: 'Dog',
+        breed: '  Golden Retriever  ',
+        sex: 'Macho',
+        date_of_birth: null,
+        microchip: null,
+      }),
+    ).toEqual({
+      name: 'Marley',
+      species: 'Dog',
+      breed: 'Golden Retriever',
+      sex: 'Male',
+      date_of_birth: null,
+      microchip: null,
     })
   })
 })

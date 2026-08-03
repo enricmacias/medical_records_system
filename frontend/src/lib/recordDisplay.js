@@ -17,6 +17,19 @@ export function normalizeSpeciesForStorage(value) {
   return null
 }
 
+export function normalizeSexForStorage(value) {
+  if (value == null || String(value).trim() === '') return null
+  const text = String(value).trim()
+  const core = text.replace(/\s*\([^)]*\)/g, '').trim()
+  const lower = core.toLowerCase()
+  if (/^(m|male|macho)$/.test(lower)) return 'Male'
+  if (/^(f|h|female|hembra)$/.test(lower)) return 'Female'
+  if (text === 'Male' || text === 'Female') return text
+  if (/\bfemale\b|\bhembra\b/i.test(lower)) return 'Female'
+  if (/\bmale\b|\bmacho\b/i.test(lower)) return 'Male'
+  return null
+}
+
 export function displaySpecies(value) {
   const normalized = normalizeSpeciesForStorage(value)
   if (normalized) return normalized
@@ -29,7 +42,7 @@ export function buildStructuredPetPayload(pet) {
     name: pet?.name?.trim() || null,
     species: normalizeSpeciesForStorage(pet?.species),
     breed: pet?.breed?.trim() || null,
-    sex: pet?.sex?.trim() || null,
+    sex: normalizeSexForStorage(pet?.sex),
     date_of_birth: pet?.date_of_birth?.trim() || null,
     microchip: pet?.microchip?.trim() || null,
   }

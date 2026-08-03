@@ -102,7 +102,7 @@ def test_inline_compound_lines_in_layout_hints() -> None:
     assert nombre["pet.date_of_birth"] == "05/07/2018"
 
     hembra = build_layout_hints(INLINE_HEMBRA_DOC)["likely_fields"]
-    assert hembra["pet.sex"] == "Hembra"
+    assert hembra["pet.sex"] == "Female"
 
 
 def test_fake_llm_structures_inline_compound_headers() -> None:
@@ -111,6 +111,6 @@ def test_fake_llm_structures_inline_compound_headers() -> None:
     assert aliya.pet.date_of_birth == "05/07/2018"
 
     hembra = FakeLLMStructurer().structure(INLINE_HEMBRA_DOC)
-    assert hembra.pet.sex == "Hembra"
+    assert hembra.pet.sex == "Female"
 
 

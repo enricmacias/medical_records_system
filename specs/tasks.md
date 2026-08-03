@@ -56,7 +56,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] `PROCESSING_MODE=async` default with FastAPI `BackgroundTasks`
 - [x] UI polling while `status=processing`
 - [x] Hybrid clinical mode: heuristics-first; narrative LLM when hints weak; summary polish when hints sufficient (see architecture structuring strategy)
-- [x] Skip demographics LLM when `pet.name` hinted
+- [x] Skip demographics LLM when **validated** `pet.name` hinted
 - [x] LLM timeout/error falls back to heuristics instead of hard-failing recoverable cases
 - [x] Env knobs: `LLM_CLINICAL_MODE`, `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_NUM_PREDICT`, `OLLAMA_NUM_CTX`
 - [x] Unit tests for hybrid/heuristic modes, fallbacks, async vs sync API
@@ -77,7 +77,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 ## T10 — Inline compound demographics + tests (done)
 
 - [x] Parse inline compound header lines (`NAME - Nacimiento: DATE`, `Nombre …`, `Hembra Estado: …` for sex)
-- [x] Inline `Label: value` segments; standalone `Hembra`/`Macho`; mixed-case names
+- [x] Inline `Label: value` segments; standalone `Hembra`/`Macho` lines (stored as `Female`/`Male` when normalized); mixed-case names
 - [x] Compound-name sanitization when generic `Nombre`/`Name` captures the full line
 - [x] Inline hints override/repair earlier `pet.name` guesses
 - [x] `tests/test_inline_demographics.py` + updates to Spanish/performance integration tests
@@ -87,8 +87,8 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 - [x] Infer species and breed from header lines without `Especie:` / `Raza:` labels (standalone species, dash compound, space-separated)
 - [x] Normalize species to canonical **`Dog`** / **`Cat`** in heuristics, LLM fallbacks, and UI display/save
-- [x] Feminine species tokens (`canina`, `felina`, `gata`) hint `Hembra` when sex not already set
-- [x] Breed plausibility guards (reject address fragments and demographic noise); labeled fields override unlabeled hints
+- [x] Feminine species tokens (`canina`, `felina`, `gata`) hint `Female` for sex when sex not already set
+- [x] Breed plausibility guards (reject address fragments and demographic noise) and **catalog validation** (`pet_breed_catalog.py`) on extraction; labeled fields override unlabeled hints
 - [x] `tests/test_unlabeled_species_breed.py`; frontend species normalization tests; align specs (data-model, scope, architecture, acceptance, tasks)
 
 ## T12 — Remove pet weight and coat_color (done)
@@ -150,3 +150,16 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Highlights persist in edit mode; Save preserves `meta.missing_fields` (badges until re-upload)
 - [x] Vitest: `fieldConfidence.test.js`, RecordForm highlight tests (EN/ES)
 - [x] Align specs (scope, problem, data-model, acceptance, architecture, api, tasks, docs, README)
+
+## T19 — Global demographic inference fallbacks (done)
+
+- [x] `infer_*_from_text` for pet name, breed, sex, DOB, microchip, owner name/phone/email/address
+- [x] `apply_global_demographic_inference` fills missing `likely_fields`; overwrites pipe-table garbage from line-start matchers
+- [x] Header scan raised to **100 lines** (`HEADER_SCAN_LINES`)
+- [x] `tests/test_global_demographic_inference.py` (incl. DOCX-style pipe table rows)
+- [x] Align specs (data-model extraction notes)
+- [x] Pet name inference (label+word after patient/pet/paciente/mascota, ALL-CAPS scan) and **proper-name validation** (`validated_pet_name`, `resolve_pet_name`)
+- [x] Breed **catalog validation** on extraction (`validated_breed`, `resolve_breed`); invalid candidates dropped, scan continues
+- [x] Sex hard normalization to canonical **`Male`** / **`Female`** in heuristics, LLM fallbacks, and frontend (`normalizeSexForStorage`, `SexField` select)
+- [x] `tests/test_demographic_validation.py`, `tests/test_pet_breed_validation.py`; expand `tests/test_global_demographic_inference.py`
+- [x] Align specs (data-model, acceptance, api, scope, architecture, tasks, ADR 0002, future-improvements)

@@ -1,12 +1,12 @@
 import { formatDisplayDate } from './formatDate'
 import { translations } from '../i18n/translations'
-import { normalizeSpeciesForStorage } from './recordDisplay'
+import { normalizeSexForStorage, normalizeSpeciesForStorage } from './recordDisplay'
 
 export function displaySex(value, locale, t) {
+  const normalized = normalizeSexForStorage(value)
+  if (normalized === 'Male') return t('sex.male')
+  if (normalized === 'Female') return t('sex.female')
   if (value == null || String(value).trim() === '') return null
-  const lower = String(value).trim().toLowerCase()
-  if (/^(m|male|macho)$/.test(lower)) return t('sex.male')
-  if (/^(f|h|female|hembra)$/.test(lower)) return t('sex.female')
   return value
 }
 
