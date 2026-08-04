@@ -5,11 +5,9 @@ from app.adapters.text_hints import (
     apply_global_demographic_inference,
     build_layout_hints,
     infer_pet_breed_from_text,
-    infer_pet_name_from_text,
     infer_pet_sex_from_text,
     infer_owner_email_from_text,
     infer_owner_phone_from_text,
-    validated_pet_name,
 )
 
 
@@ -61,53 +59,5 @@ def test_build_layout_hints_uses_global_inference() -> None:
     likely = hints["likely_fields"]
     assert likely.get("pet.breed") == "Domestic Shorthair"
     assert likely.get("pet.sex") == "Female"
+    assert likely.get("pet.name") == "Buddy"
     assert likely.get("owner.email") == "jane@example.com"
-
-
-def test_infer_pet_name_after_label_without_colon() -> None:
-    assert infer_pet_name_from_text("Patient Max\nHistorial") == "Max"
-    assert infer_pet_name_from_text("Paciente MARLEY\nHistorial") == "MARLEY"
-    assert infer_pet_name_from_text("Pet Buddy species cat") == "Buddy"
-    assert infer_pet_name_from_text("Mascota LUNA\nConsulta") == "LUNA"
-
-
-def test_infer_pet_name_rejects_label_followed_by_non_name() -> None:
-    assert infer_pet_name_from_text("Patient record\nMARLEY") == "MARLEY"
-    assert infer_pet_name_from_text("Datos del paciente\nTOBY") == "TOBY"
-
-
-def test_infer_pet_name_from_standalone_caps_line() -> None:
-    text = """
-    CLINICA VETERINARIA
-    MARLEY
-    Canino - Labrador
-    Historial
-    """
-    assert infer_pet_name_from_text(text) == "MARLEY"
-
-
-def test_infer_pet_name_from_caps_on_nombre_line() -> None:
-    assert infer_pet_name_from_text("Nombre LUNA\nHistorial") == "LUNA"
-    assert infer_pet_name_from_text("Name WHISKERS\nHistory") == "WHISKERS"
-
-
-def test_rejects_non_proper_name_words() -> None:
-    assert validated_pet_name("Summary") is None
-    assert validated_pet_name("Grammar") is None
-    assert validated_pet_name("punctuation") is None
-    assert validated_pet_name("Resumen") is None
-    assert infer_pet_name_from_text("Nombre Summary\nMARLEY") == "MARLEY"
-    assert infer_pet_name_from_text("Pet Grammar\nLUNA") == "LUNA"
-    assert infer_pet_name_from_text("Paciente Informe\nTOBY") == "TOBY"
-
-
-def test_build_layout_hints_drops_invalid_pet_name_and_finds_next() -> None:
-    text = """
-    Veterinaria Central
-    Nombre Summary
-    MARLEY
-    Canino - Labrador
-  Historial
-    """
-    likely = build_layout_hints(text)["likely_fields"]
-    assert likely.get("pet.name") == "MARLEY"

@@ -79,7 +79,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 - [x] Parse inline compound header lines (`NAME - Nacimiento: DATE`, `Nombre …`, `Hembra Estado: …` for sex)
 - [x] Inline `Label: value` segments; standalone `Hembra`/`Macho` lines (stored as `Female`/`Male` when normalized); mixed-case names
 - [x] Compound-name sanitization when generic `Nombre`/`Name` captures the full line
-- [x] Inline hints override/repair earlier `pet.name` guesses
+- [x] Inline hints override/repair earlier `pet.name` guesses during the hint pass (`validate_and_refine_pet_name` is final authority at end of `build_layout_hints`)
 - [x] `tests/test_inline_demographics.py` + updates to Spanish/performance integration tests
 - [x] Align specs (data-model extraction notes, scope, architecture, acceptance, tasks)
 
@@ -154,12 +154,21 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 ## T19 — Global demographic inference fallbacks (done)
 
 - [x] `infer_*_from_text` for pet name, breed, sex, DOB, microchip, owner name/phone/email/address
-- [x] `apply_global_demographic_inference` fills missing `likely_fields`; overwrites pipe-table garbage from line-start matchers
+- [x] `apply_global_demographic_inference` fills missing `likely_fields`; overwrites pipe-table garbage from line-start matchers; runs `validate_and_refine_pet_name` at end
 - [x] Header scan raised to **100 lines** (`HEADER_SCAN_LINES`)
 - [x] `tests/test_global_demographic_inference.py` (incl. DOCX-style pipe table rows)
 - [x] Align specs (data-model extraction notes)
-- [x] Pet name inference (label+word after patient/pet/paciente/mascota, ALL-CAPS scan) and **proper-name validation** (`validated_pet_name`, `resolve_pet_name`)
-- [x] Breed **catalog validation** on extraction (`validated_breed`, `resolve_breed`); invalid candidates dropped, scan continues
+- [x] Pet name inference (label+word after patient/pet/paciente/mascota, ALL-CAPS and other header patterns) and **proper-name validation** (`validated_pet_name`, `resolve_pet_name`)
+- [x] Breed **catalog validation** on extraction (`validated_breed`, `resolve_breed`); invalid candidates dropped, scan continues (first valid)
 - [x] Sex hard normalization to canonical **`Male`** / **`Female`** in heuristics, LLM fallbacks, and frontend (`normalizeSexForStorage`, `SexField` select)
 - [x] `tests/test_demographic_validation.py`, `tests/test_pet_breed_validation.py`; expand `tests/test_global_demographic_inference.py`
 - [x] Align specs (data-model, acceptance, api, scope, architecture, tasks, ADR 0002, future-improvements)
+
+## T20 — Ranked pet-name inference + format heuristics (done)
+
+- [x] **Ranked candidate scoring** (`_collect_scored_pet_name_candidates`, `_rank_pet_name_candidates`): pick highest-scoring validated name, not first in document order; bonuses for demographic proximity and repeat mentions; owner-token penalties for weak sources
+- [x] **`validate_and_refine_pet_name`**: final authority at end of `build_layout_hints` and `apply_global_demographic_inference`; may upgrade an already-valid `pet.name`
+- [x] **Format / case heuristics**: title-case standalone lines (with demographic context), quoted labels/phrases/lines, mixed-case colon and `Nombre`/`Name` prefix values, quote stripping in `_clean_inferred_value`
+- [x] **`Nombre PET OWNER…`** split (mixed-case, leading whitespace) → `pet.name` + `owner.name`
+- [x] `tests/test_pet_name_inference.py`; extend `tests/test_demographic_validation.py` (`TestValidateAndRefinePetName`)
+- [x] Align specs (data-model, acceptance, scope, architecture, tasks, ADR 0002, docs/architecture)

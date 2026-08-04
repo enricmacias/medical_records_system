@@ -13,7 +13,7 @@ We need free, local structuring into a fixed JSON schema, without cloud API cost
 ## Decision
 
 1. Abstract structuring behind `MedicalRecordStructurer` with **Ollama** and **Fake** implementations.
-2. Run **layout/visit heuristics first** (Spanish/English headers, chip, inline compound demographics, label-free species/breed header patterns, **global demographic inference** (~100 header lines, pipe-table rows), **pet name proper-name validation**, **breed catalog validation**, species/sex normalization, dated visit blocks, diagnosis/medication hints).
+2. Run **layout/visit heuristics first** (Spanish/English headers, chip, inline compound demographics, label-free species/breed header patterns, **global demographic inference** (~100 header lines, pipe-table rows), **ranked pet-name heuristics** with `validate_and_refine_pet_name` at end of hint pass, **pet name proper-name validation**, **breed catalog validation**, species/sex normalization, dated visit blocks, diagnosis/medication hints).
 3. Default **`LLM_CLINICAL_MODE=hybrid`**:
    - Skip demographics LLM when a **validated** `pet.name` is already present in hints (`validated_pet_name`).
    - **Clinical narrative LLM** (`ClinicalNarrative`): call only when clinical heuristics are **weak** (no visit blocks, diagnosis hints, or medication hints).
@@ -29,5 +29,5 @@ We need free, local structuring into a fixed JSON schema, without cloud API cost
 - Multi-visit Spanish clinic documents (PDF or .docx) often complete with heuristic clinical summary without narrative LLM; hybrid may still call Ollama for summary polish when hints are strong. Structuring consumes plain `raw_text` regardless of source format.
 - JSON shape remains validated by Pydantic; humans edit **pet** (six fields) and **owner** in the UI; clinical summary is read-only in v1
 - Reviewers can use `LLM_PROVIDER=fake` or hybrid without a GPU (FakeLLM produces heuristic summary)
-- Heuristics are template-biased (stronger on ES/EN clinic headers, including label-free species/breed lines, global inference, and extraction-time name/breed validation); unusual formats still benefit from `llm` mode when hardware allows
+- Heuristics are template-biased (stronger on ES/EN clinic headers, including label-free species/breed lines, global inference, **ranked pet-name extraction**, and extraction-time name/breed validation); unusual formats still benefit from `llm` mode when hardware allows
 - “Ollama unavailable” is not always a hard failure under hybrid/heuristic modes

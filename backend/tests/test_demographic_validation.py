@@ -6,6 +6,7 @@ from app.adapters.text_hints import (
     build_layout_hints,
     resolve_breed,
     resolve_pet_name,
+    validate_and_refine_pet_name,
     validated_breed,
     validated_pet_name,
 )
@@ -73,6 +74,12 @@ class TestApplyGlobalDemographicInference:
         apply_global_demographic_inference(hints, head)
         assert hints["likely_fields"]["pet.name"] == "LUNA"
 
+    def test_upgrades_stored_name_to_ranked_best_via_refine(self) -> None:
+        hints: dict = {"likely_fields": {"pet.name": "MARLEY"}}
+        head = "Pet: LUNA\nSpecies: Feline"
+        apply_global_demographic_inference(hints, head)
+        assert hints["likely_fields"]["pet.name"] == "LUNA"
+
     def test_replaces_invalid_stored_breed_with_next_valid_candidate(self) -> None:
         hints: dict = {"likely_fields": {"pet.breed": "Summary"}}
         head = "Breed: Golden Retriever\nHistorial"
@@ -87,6 +94,26 @@ class TestApplyGlobalDemographicInference:
         hints_male: dict = {"likely_fields": {"pet.sex": "Macho"}}
         apply_global_demographic_inference(hints_male, "Historial")
         assert hints_male["likely_fields"]["pet.sex"] == "Male"
+
+
+class TestValidateAndRefinePetName:
+    def test_refine_upgrades_weaker_valid_hint_to_ranked_best(self) -> None:
+        likely = {"pet.name": "TOBY"}
+        head = "TOBY\nPet: LUNA\nSpecies: Feline"
+        validate_and_refine_pet_name(likely, head)
+        assert likely["pet.name"] == "LUNA"
+
+    def test_refine_keeps_valid_hint_when_ranking_finds_nothing_better(self) -> None:
+        likely = {"pet.name": "MARLEY"}
+        head = "Pet: MARLEY\nSpecies: Canine"
+        validate_and_refine_pet_name(likely, head)
+        assert likely["pet.name"] == "MARLEY"
+
+    def test_refine_drops_invalid_and_fills_from_ranking(self) -> None:
+        likely = {"pet.name": "Summary"}
+        head = "Nombre LUNA\nHistorial"
+        validate_and_refine_pet_name(likely, head)
+        assert likely["pet.name"] == "LUNA"
 
 
 class TestOllamaStructurerFallbacks:

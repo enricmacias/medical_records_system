@@ -70,7 +70,7 @@ Clinical structuring uses **two optional LLM passes** after heuristics (see `spe
 
 **Heuristic sufficiency (clinical):** at least one dated visit block, or diagnosis hints, or medication hints.
 
-**Demographics LLM:** skipped when a **validated** `pet.name` is present in hints (`validated_pet_name`; see data-model extraction note §4). Caveat: skip is keyed on validated name only — junk tokens do not skip the LLM.
+**Demographics LLM:** skipped when a **validated** `pet.name` is present in hints (`validated_pet_name`; see data-model extraction note §4). Caveat: skip is keyed on validated name only — junk tokens do not skip the LLM. **Pet name in hints** is set by ranked heuristics + `validate_and_refine_pet_name` at the end of the layout-hint pass (see data-model extraction note §1).
 
 **On LLM timeout/error:** keep heuristic clinical fields and heuristic summary; complete the record when possible; do not fail solely because Ollama timed out.
 

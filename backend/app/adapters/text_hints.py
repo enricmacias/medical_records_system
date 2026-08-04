@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from app.adapters.pet_breed_catalog import is_known_dog_or_cat_breed
@@ -141,6 +142,19 @@ _PET_NAME_LABEL_WORD = re.compile(
 )
 _STANDALONE_CAPS_NAME_LINE = re.compile(
     r"^(?P<name>[A-ZÁÉÍÓÚÜÑ]{2,}(?:'[A-ZÁÉÍÓÚÜÑ]+)?)\s*[.:]?\s*$",
+)
+_STANDALONE_TITLE_CASE_NAME_LINE = re.compile(
+    r"^(?P<name>[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]{1,14})\s*[.:]?\s*$",
+)
+_STANDALONE_QUOTED_NAME_LINE = re.compile(
+    r'^["\'](?P<name>[^"\']{2,30})["\']\s*[.:]?\s*$',
+)
+_LABELED_QUOTED_PET_NAME = re.compile(
+    r'(?i)(?:pet|mascota|paciente|patient|nombre|name)\s*[:\-]?\s*["\']([^"\']{2,30})["\']',
+)
+_QUOTED_PET_NAME_PHRASE = re.compile(
+    r'(?i)(?:known\s+as|aka|se\s+llama|nickname|alias|responds\s+to|apodado)\s*'
+    r'["\']([^"\']{2,30})["\']',
 )
 _ALL_CAPS_NAME_TOKEN = re.compile(r"\b([A-ZÁÉÍÓÚÜÑ]{2,}(?:'[A-ZÁÉÍÓÚÜÑ]+)?)\b")
 
@@ -548,6 +562,13 @@ def _header_sample(text: str) -> str:
     return sample
 
 
+def _strip_surrounding_quotes(value: str) -> str:
+    cleaned = value.strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in "\"'":
+        return cleaned[1:-1].strip()
+    return cleaned
+
+
 def _clean_inferred_value(value: str | None) -> str | None:
     if value is None:
         return None
@@ -555,6 +576,7 @@ def _clean_inferred_value(value: str | None) -> str | None:
     cleaned = re.sub(r"^\|+\s*", "", cleaned)
     cleaned = re.sub(r"\s*\|+$", "", cleaned)
     cleaned = cleaned.strip(" ,;")
+    cleaned = _strip_surrounding_quotes(cleaned)
     if not cleaned or cleaned in ("—", "-", "n/a", "n/d"):
         return None
     return cleaned
@@ -611,7 +633,52 @@ def resolve_pet_name(
     return validated_pet_name(hint_name)
 
 
-def _add_pet_name_candidate(candidates: list[str], seen: set[str], raw: str | None) -> None:
+@dataclass(frozen=True)
+class _PetNameCandidate:
+    name: str
+    source: str
+    line_index: int | None = None
+
+
+_PET_NAME_SOURCE_SCORES: dict[str, int] = {
+    "colon_pet_label": 100,
+    "colon_name_label": 85,
+    "quoted_label": 88,
+    "label_word": 75,
+    "quoted_phrase": 78,
+    "nombre_prefix": 70,
+    "standalone_title": 50,
+    "quoted_line": 55,
+    "standalone_caps": 45,
+    "caps_token": 25,
+}
+_PET_NAME_WEAK_SOURCES = frozenset(
+    {"standalone_caps", "caps_token", "standalone_title", "quoted_line"}
+)
+_DEMOGRAPHIC_CONTEXT_PATTERN = re.compile(
+    r"(?i)(?:especie|species|raza|breed|sexo|sex|macho|hembra|male|female|"
+    r"canino|felino|canine|feline|perro|gato|dog|cat|microchip|chip|"
+    r"nacimiento|spayed|neutered|fertil|esteril)"
+)
+_OWNER_LABEL_LINE = re.compile(
+    r"(?im)^(?:owner|propietario|cliente|tutor)\s*[:\-]?\s+(.+?)\s*$"
+)
+_NOMBRE_PET_OWNER_LINE = re.compile(
+    r"(?im)^\s*nombre\s+([A-Za-zÁÉÍÓÚÜÑ][\wÁÉÍÓÚÜÑ\-']+)\s+([A-Za-zÁÉÍÓÚÜÑ].+)$"
+)
+
+
+def _line_index_at(text: str, position: int) -> int:
+    return text.count("\n", 0, position)
+
+
+def _append_pet_name_candidate(
+    candidates: list[_PetNameCandidate],
+    raw: str | None,
+    *,
+    source: str,
+    line_index: int | None = None,
+) -> None:
     if not raw:
         return
     cleaned = _clean_inferred_value(raw)
@@ -621,26 +688,60 @@ def _add_pet_name_candidate(candidates: list[str], seen: set[str], raw: str | No
         return
     name, _ = _split_name_and_nacimiento(cleaned)
     value = (name or cleaned).strip()
-    key = value.lower()
-    if key and key not in seen:
-        seen.add(key)
-        candidates.append(value)
+    if not value:
+        return
+    candidates.append(
+        _PetNameCandidate(name=value, source=source, line_index=line_index)
+    )
 
 
-def _collect_pet_name_candidates(text: str) -> list[str]:
-    candidates: list[str] = []
-    seen: set[str] = set()
+def _collect_scored_pet_name_candidates(text: str) -> list[_PetNameCandidate]:
+    candidates: list[_PetNameCandidate] = []
+    lines = text.splitlines()[:HEADER_SCAN_LINES]
 
-    for pattern in (_PET_NAME_LABEL_WITH_COLON, _PET_NAME_NOMBRE_LABEL):
-        for match in pattern.finditer(text):
-            _add_pet_name_candidate(candidates, seen, match.group(1))
+    for match in _PET_NAME_LABEL_WITH_COLON.finditer(text):
+        _append_pet_name_candidate(
+            candidates,
+            match.group(1),
+            source="colon_pet_label",
+            line_index=_line_index_at(text, match.start()),
+        )
+
+    for match in _PET_NAME_NOMBRE_LABEL.finditer(text):
+        _append_pet_name_candidate(
+            candidates,
+            match.group(1),
+            source="colon_name_label",
+            line_index=_line_index_at(text, match.start()),
+        )
+
+    for match in _LABELED_QUOTED_PET_NAME.finditer(text):
+        _append_pet_name_candidate(
+            candidates,
+            match.group(1),
+            source="quoted_label",
+            line_index=_line_index_at(text, match.start()),
+        )
+
+    for match in _QUOTED_PET_NAME_PHRASE.finditer(text):
+        _append_pet_name_candidate(
+            candidates,
+            match.group(1),
+            source="quoted_phrase",
+            line_index=_line_index_at(text, match.start()),
+        )
 
     for match in _PET_NAME_LABEL_WORD.finditer(text):
         token = _clean_inferred_value(match.group(1))
         if token and token.lower() not in _PET_NAME_REJECT_FOLLOWING:
-            _add_pet_name_candidate(candidates, seen, token)
+            _append_pet_name_candidate(
+                candidates,
+                token,
+                source="label_word",
+                line_index=_line_index_at(text, match.start()),
+            )
 
-    for raw_line in text.splitlines()[:HEADER_SCAN_LINES]:
+    for line_index, raw_line in enumerate(lines):
         line = raw_line.strip()
         if not line:
             continue
@@ -651,32 +752,180 @@ def _collect_pet_name_candidates(text: str) -> list[str]:
 
         standalone = _STANDALONE_CAPS_NAME_LINE.match(line)
         if standalone:
-            _add_pet_name_candidate(candidates, seen, standalone.group("name"))
+            _append_pet_name_candidate(
+                candidates,
+                standalone.group("name"),
+                source="standalone_caps",
+                line_index=line_index,
+            )
+
+        quoted_line = _STANDALONE_QUOTED_NAME_LINE.match(line)
+        if quoted_line:
+            _append_pet_name_candidate(
+                candidates,
+                quoted_line.group("name"),
+                source="quoted_line",
+                line_index=line_index,
+            )
+
+        title_case = _STANDALONE_TITLE_CASE_NAME_LINE.match(line)
+        if title_case and _line_demographic_bonus(lines, line_index) > 0:
+            _append_pet_name_candidate(
+                candidates,
+                title_case.group("name"),
+                source="standalone_title",
+                line_index=line_index,
+            )
 
         nombre_prefix = re.match(r"(?i)^(?:nombre|name)\s+(.+)$", line)
         if nombre_prefix:
             first_token = nombre_prefix.group(1).strip().split()[0]
-            _add_pet_name_candidate(candidates, seen, first_token.strip(".,;"))
+            _append_pet_name_candidate(
+                candidates,
+                first_token.strip(".,;"),
+                source="nombre_prefix",
+                line_index=line_index,
+            )
 
         for token_match in _ALL_CAPS_NAME_TOKEN.finditer(line):
-            _add_pet_name_candidate(candidates, seen, token_match.group(1))
+            _append_pet_name_candidate(
+                candidates,
+                token_match.group(1),
+                source="caps_token",
+                line_index=line_index,
+            )
 
     return candidates
 
 
+def _extract_owner_first_tokens(text: str) -> set[str]:
+    tokens: set[str] = set()
+    for match in _OWNER_LABEL_LINE.finditer(text):
+        value = _clean_inferred_value(match.group(1))
+        if not value:
+            continue
+        first = value.split()[0].strip(".,;")
+        if first:
+            tokens.add(first.lower())
+    for match in _NOMBRE_PET_OWNER_LINE.finditer(text):
+        owner_rest = match.group(2)
+        first = owner_rest.strip().split()[0].strip(".,;")
+        if first:
+            tokens.add(first.lower())
+    return tokens
+
+
+def _line_demographic_bonus(lines: list[str], line_index: int | None) -> int:
+    if line_index is None or not (0 <= line_index < len(lines)):
+        return 0
+    if _DEMOGRAPHIC_CONTEXT_PATTERN.search(lines[line_index]):
+        return 35
+    for offset in (-1, 1):
+        adjacent = line_index + offset
+        if 0 <= adjacent < len(lines) and _DEMOGRAPHIC_CONTEXT_PATTERN.search(
+            lines[adjacent]
+        ):
+            return 18
+    return 0
+
+
+def _pet_name_repeat_bonus(name: str, text: str) -> int:
+    pattern = re.compile(
+        rf"(?<![\wÁÉÍÓÚÜÑáéíóúüñ]){re.escape(name)}(?![\wÁÉÍÓÚÜÑáéíóúüñ])",
+        flags=re.I,
+    )
+    count = len(pattern.findall(text))
+    return min(max(0, count - 1) * 12, 36)
+
+
+def _weak_source_owner_penalty(
+    name: str,
+    source: str,
+    line_indices: list[int],
+    lines: list[str],
+    owner_tokens: set[str],
+) -> int:
+    if source not in _PET_NAME_WEAK_SOURCES:
+        return 0
+    penalty = 0
+    if name.lower() in owner_tokens:
+        penalty += 45
+    for line_index in line_indices:
+        if not (0 <= line_index < len(lines)):
+            continue
+        line = lines[line_index]
+        if _OWNER_LABEL_LINE.match(line) and re.search(
+            rf"(?i)\b{re.escape(name)}\b", line
+        ):
+            penalty += 55
+            break
+    return penalty
+
+
+def _rank_pet_name_candidates(
+    text: str,
+    candidates: list[_PetNameCandidate],
+) -> list[tuple[str, int]]:
+    lines = text.splitlines()[:HEADER_SCAN_LINES]
+    owner_tokens = _extract_owner_first_tokens(text)
+    grouped: dict[str, dict[str, Any]] = {}
+
+    for candidate in candidates:
+        key = candidate.name.lower()
+        base_score = _PET_NAME_SOURCE_SCORES[candidate.source]
+        entry = grouped.get(key)
+        if entry is None:
+            grouped[key] = {
+                "name": candidate.name,
+                "best_base": base_score,
+                "best_source": candidate.source,
+                "line_indices": [],
+            }
+        else:
+            if base_score > entry["best_base"]:
+                entry["best_base"] = base_score
+                entry["best_source"] = candidate.source
+                entry["name"] = candidate.name
+        if candidate.line_index is not None:
+            entry = grouped[key]
+            if candidate.line_index not in entry["line_indices"]:
+                entry["line_indices"].append(candidate.line_index)
+
+    ranked: list[tuple[str, int]] = []
+    for entry in grouped.values():
+        name = entry["name"]
+        score = entry["best_base"]
+        line_indices = entry["line_indices"]
+        score += max(
+            (_line_demographic_bonus(lines, line_index) for line_index in line_indices),
+            default=0,
+        )
+        score += _pet_name_repeat_bonus(name, text)
+        score -= _weak_source_owner_penalty(
+            name,
+            entry["best_source"],
+            line_indices,
+            lines,
+            owner_tokens,
+        )
+        ranked.append((name, score))
+
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    return ranked
+
+
 def validate_and_refine_pet_name(likely: dict[str, str], head: str) -> None:
-    """Drop non-proper-name values and scan for a better pet.name in the header."""
+    """Drop non-proper-name values and pick the best-ranked pet.name in the header."""
+    ranked_best = infer_pet_name_from_text(head)
     current = likely.get("pet.name")
     if current is not None:
-        validated = validated_pet_name(str(current))
-        if validated:
-            likely["pet.name"] = validated
-        else:
-            likely.pop("pet.name", None)
-    if not likely.get("pet.name"):
-        inferred = infer_pet_name_from_text(head)
-        if inferred:
-            likely["pet.name"] = inferred
+        validated_current = validated_pet_name(str(current))
+        if validated_current:
+            likely["pet.name"] = ranked_best or validated_current
+            return
+        likely.pop("pet.name", None)
+    if ranked_best:
+        likely["pet.name"] = ranked_best
 
 
 def _is_plausible_pet_name_candidate(name: str) -> bool:
@@ -702,9 +951,10 @@ def _is_plausible_pet_name_candidate(name: str) -> bool:
 
 
 def infer_pet_name_from_text(text: str) -> str | None:
-    """Global fallback: pet name anywhere in header sample (incl. table-ish rows)."""
-    for candidate in _collect_pet_name_candidates(text):
-        validated = validated_pet_name(candidate)
+    """Pick the highest-scoring validated pet name from header heuristics."""
+    candidates = _collect_scored_pet_name_candidates(text)
+    for name, _score in _rank_pet_name_candidates(text, candidates):
+        validated = validated_pet_name(name)
         if validated:
             return validated
     return None
@@ -1336,7 +1586,7 @@ def build_layout_hints(text: str) -> dict[str, Any]:
         hints["likely_fields"]["owner.address"] = address
 
     nombre_line = re.search(
-        r"(?im)^nombre\s+([A-ZÁÉÍÓÚÜÑ][\wÁÉÍÓÚÜÑ\-']+)\s+([A-ZÁÉÍÓÚÜÑ].+)$",
+        r"(?im)^\s*nombre\s+([A-Za-zÁÉÍÓÚÜÑ][\wÁÉÍÓÚÜÑ\-']+)\s+([A-Za-zÁÉÍÓÚÜÑ].+)$",
         head,
     )
     if nombre_line:
