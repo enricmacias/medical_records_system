@@ -101,10 +101,11 @@ Architecture notes and ADRs: [`docs/`](./docs/).
 - Default `PROCESSING_MODE=async` avoids gateway timeouts: upload returns immediately; the UI polls and shows progressive section loading with percent/step feedback until the clinical summary is ready.
 - Use the header **English / Español** toggle to change site UI language (labels, dates, processing messages). This does not change extracted data or clinical summary language; `meta.source_language` shows the document language.
 - The structured form **highlights missing and uncertain fields** (amber badges/borders) from `meta.missing_fields` and `meta.extraction_confidence`; filling fields in Edit does not clear highlights until re-upload (see `specs/data-model.md` Confidence UX).
-- Default `LLM_CLINICAL_MODE=hybrid`: for multi-visit PDFs with strong historial hints, **clinical narrative** LLM is skipped but **clinical summary polish** may still run when Ollama is available; heuristic clinical summary is always generated. Weak-hint documents may call narrative LLM instead of polish.
+- Default `LLM_CLINICAL_MODE=hybrid`: always attempts a single **text-first** clinical summary LLM pass when Ollama is available and clinical content is detected; heuristic summary is used on timeout/error, empty response, or when Ollama is down (`meta.clinical_summary_source=heuristic_fallback`).
 - Demographics LLM is also skipped when header heuristics find `pet.name`.
-- `LLM_CLINICAL_MODE=heuristic`: fastest — no clinical LLM calls; heuristic clinical summary only.
-- If the LLM is used and times out, the record still completes with heuristic data (no hard failure).
+- `LLM_CLINICAL_MODE=heuristic`: fastest — no clinical LLM calls; heuristic clinical summary only (`clinical_summary_source=heuristic`).
+- If the LLM is used and times out, the record still completes with heuristic data (no hard failure); the UI shows a **fallback notice** when `clinical_summary_source=heuristic_fallback`.
+- Clinical summary LLM uses **1024** max tokens (`CLINICAL_SUMMARY_NUM_PREDICT`, hardcoded); demographics LLM uses `OLLAMA_NUM_PREDICT` (default 384).
 - Optional smaller model: `OLLAMA_MODEL=llama3.2:3b`.
 
 ## Future improvements

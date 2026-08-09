@@ -165,7 +165,7 @@ Surfaced on `RecordResponse.processing` while `status=processing` and progress h
 | Field | Description |
 |---|---|
 | `percent` | Integer 0–100; approximate completion for user feedback (not a strict time estimate). |
-| `step` | Machine step id (e.g. `starting`, `extracting_text`, `demographics`, `clinical_analysis`, `clinical_summary`, `clinical_summary_polish`, `completing`). **v1 web UI localizes progress text from `step` and `percent`**, not from `message`. |
+| `step` | Machine step id (e.g. `starting`, `extracting_text`, `demographics`, `clinical_summary`, `completing`). **v1 web UI localizes progress text from `step` and `percent`**, not from `message`. |
 | `message` | Short user-facing description of the current step (English from backend). API clients may display this directly; the v1 React UI maps `step` (+ `percent` ≥ 35 for `demographics`) to localized strings instead. |
 
 Typical stages (see `specs/architecture.md` for pipeline detail):
@@ -175,9 +175,7 @@ Typical stages (see `specs/architecture.md` for pipeline detail):
 | `starting` | 5 | Starting to process your document… |
 | `extracting_text` | 15 | Reading text from your document… |
 | `demographics` | 20–35 | Extracting pet and owner details… / Pet and owner details are ready… |
-| `clinical_analysis` | 50 | Reviewing visits, diagnoses, and medications… |
-| `clinical_summary` | 65 | Writing the clinical summary… |
-| `clinical_summary_polish` | 80 | Polishing the clinical summary with AI… |
+| `clinical_summary` | 50 | Writing the clinical summary… |
 | `completing` | 95 | Saving your structured record… |
 
 **Client note (v1 UI):** Spanish equivalents exist for all `step` ids in frontend i18n. When `step` is `demographics` and `percent` ≥ 35, the UI shows the “pet and owner ready” message rather than the “extracting demographics” message.
@@ -201,4 +199,4 @@ Typical stages (see `specs/architecture.md` for pipeline detail):
 
 `processing` is `null` when `status` is `completed` or `failed`, and may be `null` briefly at the start of async processing before the first progress write.
 
-See `specs/data-model.md` for `MedicalRecord` field semantics, partial-state rules during `processing`, and **Confidence UX** (frontend highlighting from `meta.extraction_confidence` and `meta.missing_fields` — no additional API fields).
+See `specs/data-model.md` for `MedicalRecord` field semantics (including `meta.clinical_summary_source`), partial-state rules during `processing`, and **Confidence UX** (frontend highlighting from `meta.extraction_confidence` and `meta.missing_fields` — no additional API fields beyond persisted `meta`).

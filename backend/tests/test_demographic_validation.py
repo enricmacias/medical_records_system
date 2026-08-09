@@ -135,15 +135,15 @@ class TestOllamaStructurerFallbacks:
         result = OllamaStructurer._apply_demographics_fallbacks(record, hints)
         assert result.pet.name is None
 
-    def test_apply_fallbacks_normalizes_sex_on_record(self) -> None:
+    def test_demographics_fallbacks_normalizes_sex_on_record(self) -> None:
         record = _record(pet=PetInfo(sex="H"))
-        result = OllamaStructurer._apply_fallbacks(record, {"likely_fields": {}})
+        result = OllamaStructurer._apply_demographics_fallbacks(record, {"likely_fields": {}})
         assert result.pet.sex == "Female"
 
-    def test_apply_fallbacks_normalizes_sex_from_hints(self) -> None:
+    def test_demographics_fallbacks_normalizes_sex_from_hints(self) -> None:
         record = _record(pet=PetInfo(sex=None))
         hints = {"likely_fields": {"pet.sex": "Macho"}}
-        result = OllamaStructurer._apply_fallbacks(record, hints)
+        result = OllamaStructurer._apply_demographics_fallbacks(record, hints)
         assert result.pet.sex == "Male"
 
     def test_hints_sufficient_requires_valid_pet_name(self) -> None:

@@ -30,14 +30,15 @@ During async structuring, the backend may persist and return a **partial** `Medi
 | `owner` | — |
 | `meta` | — |
 | — | `clinical.history` (clinical summary) |
+| — | `meta.clinical_summary_source` |
 
-Partial payloads are valid `MedicalRecord` objects. `meta.missing_fields` may include `clinical.history` until the summary is generated. Clients should tolerate `clinical.history` null/empty while `status=processing` and show progress feedback for that section (not missing-field highlights on clinical summary during processing). Pet/owner fields may show **Not extracted** badges from partial `missing_fields` while still `processing`.
+Partial payloads are valid `MedicalRecord` objects. `meta.missing_fields` may include `clinical.history` until the summary is generated. `meta.clinical_summary_source` is **`null`/absent** until clinical summary generation completes (not set on the demographics-only partial callback). Clients should tolerate `clinical.history` null/empty while `status=processing` and show progress feedback for that section (not missing-field highlights on clinical summary during processing). Pet/owner fields may show **Not extracted** badges from partial `missing_fields` while still `processing`.
 
 ## Structured medical record (`structured_data`)
 
 Unknown values MUST be `null` (or empty list). The pipeline MUST NOT invent clinical facts.
 
-**Persisted shape (v1):** only pet demographics (six fields), owner contact, clinical summary, and meta. Visit details, medications lists, diagnosis, visit entry arrays, and other extraction workspace fields are used **during structuring only** and are **not stored** on the record.
+**Persisted shape (v1):** only pet demographics (six fields), owner contact, clinical summary, and meta. Visit details, medications lists, diagnosis, visit entry arrays, and other extraction workspace fields may be built **during heuristic fallback only** and are **not stored** on the record.
 
 Supports multilingual clinic documents (especially Spanish/English), **two-column headers**, **inline compound header lines**, **label-free species/breed header tokens**, and long multi-visit histories (for clinical summary generation).
 
@@ -63,7 +64,8 @@ Supports multilingual clinic documents (especially Spanish/English), **two-colum
   "meta": {
     "source_language": "string | null",
     "extraction_confidence": "low | medium | high",
-    "missing_fields": ["string"]
+    "missing_fields": ["string"],
+    "clinical_summary_source": "llm | heuristic_fallback | heuristic | null"
   }
 }
 ```
@@ -88,10 +90,11 @@ No other pet fields (e.g. weight, coat color) exist in the persisted schema, ext
 | Field | Meaning |
 |---|---|
 | `owner.*` | Client/owner name, phone, email, address. |
-| `clinical.history` | **Clinical summary** — readable prose generated at upload/re-process (max **2000** characters). Read-only in the UI. Workspace fields (diagnosis, medications, visit blocks, etc.) feed summary generation but are **not persisted**. Medication names may appear briefly inside the summary text. |
+| `clinical.history` | **Clinical summary** — readable prose generated at upload/re-process (max **2000** characters). Read-only in the UI. In **`hybrid`/`llm` modes**, generated primarily from **extracted source text** via an optional LLM pass. On LLM failure or in **`heuristic` mode**, generated from a **heuristic workspace** built from visit/diagnosis/medication hints (workspace fields are **not persisted**). Medication names may appear briefly inside the summary text. |
 | `meta.source_language` | ISO 639-1 when detectable (`es`, `en`, …). **Document language** — independent of site UI language; shown as raw code in Meta. |
-| `meta.extraction_confidence` | Pipeline self-assessment (`low` / `medium` / `high`). Drives form-level low-confidence notice and “Uncertain” field badges (see Confidence UX). |
+| `meta.extraction_confidence` | Pipeline self-assessment (`low` / `medium` / `high`). May reflect clinical **hints** (visit blocks, diagnosis/medication hints) even before a clinical workspace is built. Drives form-level low-confidence notice and “Uncertain” field badges (see Confidence UX). |
 | `meta.missing_fields` | Persisted dot-paths still empty **after extraction completes** (see below). Drives “Not extracted” field badges. Unknown paths (e.g. `raw_text` in tests) are ignored by the UI. |
+| `meta.clinical_summary_source` | How `clinical.history` was produced. **`llm`** — clinical summary LLM succeeded. **`heuristic_fallback`** — LLM was attempted (`hybrid`/`llm`) but failed, timed out, or returned empty/whitespace; rule-based summary used. **`heuristic`** — no LLM attempt (`heuristic` mode or FakeLLM). **`null`/absent** — summary not generated (e.g. partial payload during processing, or document lacked clinical content). **Not shown as a Meta panel row**; drives a notice in the Clinical summary section only when `heuristic_fallback`. UI shows **no notice** for `llm`, `heuristic`, or `null`. Preserved on PATCH unchanged (like other `meta` fields). |
 
 ## UI presentation (record detail)
 
@@ -101,8 +104,8 @@ The structured form shows **only** these sections. **Section titles and field la
 |---|---|---|
 | Pet | six `pet` fields | Labels localized; read-only until Edit. Fields in `meta.missing_fields` or empty when `extraction_confidence` is `low` are **visually highlighted** (badge + border). |
 | Owner | `owner.*` | Labels localized; owner **name value not translated**. Same missing/low-confidence highlighting as Pet. Read-only until Edit. |
-| Clinical summary | `clinical.history` | Read-only always (max **2000** characters). **Prose stays in document language**; embedded dates reformatted for display. While `status=processing` and summary not ready, show **progress bar + localized step message** (from `processing.step`, not API `message`) — **no missing/low-confidence highlight** on this section during processing. After completion: highlight when path is in `missing_fields` or when confidence is `low` and summary is still empty. |
-| Meta | `meta.*` | Confidence and missing-field path labels localized; `source_language` shown as ISO code. **Summary list** of missing paths (`form.missing`) shown alongside per-field badges (intentional redundancy in v1). Confidence value uses warning styling when `low`. May appear in partial structured data before clinical summary completes. |
+| Clinical summary | `clinical.history` | Read-only always (max **2000** characters). **Prose stays in document language**; embedded dates reformatted for display. While `status=processing` and summary not ready, show **progress bar + localized step message** (from `processing.step`, not API `message`) — **no missing/low-confidence highlight** on this section during processing. After completion: highlight when path is in `missing_fields` or when confidence is `low` and summary is still empty. When `meta.clinical_summary_source` is `heuristic_fallback`, show a localized notice above the summary (LLM timeout/error; rule-based fallback). |
+| Meta | `meta.source_language`, `meta.extraction_confidence`, `meta.missing_fields` | Confidence and missing-field path labels localized; `source_language` shown as ISO code. **`meta.clinical_summary_source` is not displayed here** (see Clinical summary section). **Summary list** of missing paths (`form.missing`) shown alongside per-field badges (intentional redundancy in v1). Confidence value uses warning styling when `low`. May appear in partial structured data before clinical summary completes. |
 
 **Progressive loading (async):** Pet, Owner, and Meta sections render as soon as partial `structured_data` is available. **Clinical summary** is the slowest step on a local LLM; show percent and localized processing step until `clinical.history` is populated or `status=completed`.
 
@@ -133,7 +136,7 @@ The structured form shows **only** these sections. **Section titles and field la
 
 **Pipeline note:** structurers may set interim `missing_fields` during workspace extraction (e.g. only `pet.name`, `pet.species`, `owner.name` in the LLM adapter). **Final** `missing_fields` on `completed` records comes from `to_persisted_record()` / `missing_fields_for_persisted()`, not the interim list.
 
-**i18n keys (frontend):** `form.lowConfidenceNotice`, `form.flagMissing`, `form.flagLowConfidence`, `form.confidenceLabel`, `form.languageLabel`, `form.missing` (Meta summary list); legacy `form.confidence` / `form.language` templates retained but v1 UI uses split label + value for confidence/language rows.
+**i18n keys (frontend):** `form.lowConfidenceNotice`, `form.flagMissing`, `form.flagLowConfidence`, `form.confidenceLabel`, `form.languageLabel`, `form.missing` (Meta summary list), `form.clinicalSummaryFallbackNotice` (amber notice when `meta.clinical_summary_source` is `heuristic_fallback`); legacy `form.confidence` / `form.language` templates retained but v1 UI uses split label + value for confidence/language rows.
 
 **Edit interaction:** Pet and Owner fields are read-only by default. **Edit** enables those inputs only and is **disabled** while `status=processing`. **Clinical summary** and **Meta** remain read-only. In **edit mode**, species and sex selects show localized labels (Perro/Gato, Macho/Hembra) but save canonical `Dog`/`Cat` and `Male`/`Female`; other pet fields show raw stored values (e.g. `04/10/19`). **Save corrections** PATCHes `structured_data`; **Cancel** discards unsaved edits (confirm when dirty).
 
@@ -146,7 +149,7 @@ v1 supports **English** and **Spanish** for the **site UI** only (header toggle)
 | Aspect | Behavior |
 |---|---|
 | Toggle | Header **English / Español** on all pages; preference in `localStorage` (`vetrecords-ui-locale`); default from browser locale (`es*` → Spanish, else English). |
-| Localized | App chrome, section titles, field **labels**, buttons, record-detail **status**, processing **steps** (via `processing.step` + percent; backend `processing.message` is English-generic and is **not** shown by the v1 UI), confidence row labels (`form.confidenceLabel`, `form.languageLabel`), translated confidence **values** (`confidence.low` / `medium` / `high`), missing-field path labels in Meta list (`fields.*`), **confidence UX badges** (`form.flagMissing`, `form.flagLowConfidence`), **low-confidence banner** (`form.lowConfidenceNotice`), species **display** (Dog/Perro, Cat/Gato), sex **display** (read-only), list timestamps (`toLocaleString`). |
+| Localized | App chrome, section titles, field **labels**, buttons, record-detail **status**, processing **steps** (via `processing.step` + percent; backend `processing.message` is English-generic and is **not** shown by the v1 UI), confidence row labels (`form.confidenceLabel`, `form.languageLabel`), translated confidence **values** (`confidence.low` / `medium` / `high`), missing-field path labels in Meta list (`fields.*`), **confidence UX badges** (`form.flagMissing`, `form.flagLowConfidence`), **low-confidence banner** (`form.lowConfidenceNotice`), **clinical summary fallback notice** (`form.clinicalSummaryFallbackNotice`), species **display** (Dog/Perro, Cat/Gato), sex **display** (read-only), list timestamps (`toLocaleString`). |
 | Not localized (values) | **`pet.name`**, **`pet.microchip`**, **`owner.name`** — always shown as stored/extracted. |
 | Not translated (content) | **Clinical summary prose** — remains in document language; only **dates within the summary** are reformatted for display. Breed, phone, email, address **values** stay as extracted. |
 | Date display | Read-only: **long form** with **month name** and **full year** in site language (e.g. EN: `October 4, 2019`; ES: `4 de octubre de 2019`). Applies to `pet.date_of_birth` and date patterns in clinical summary. Edit mode shows raw stored date strings. |
@@ -186,8 +189,12 @@ Structuring uses a wider **workspace** (`ExtractionRecord` in `domain/extraction
    - Breed plausibility: reject address fragments, dates, demographic noise; **known breed validation** via `pet_breed_catalog` rejects non-catalog values (e.g. Summary, Grammar) and continues scanning for a recognized dog/cat breed (English and Spanish names; prefix match e.g. `Labrador` → `Labrador Retriever`)
 4. **Demographics LLM:** if `LLM_SKIP_DEMOGRAPHICS_WHEN_HINTED=true` and a **validated** `pet.name` is present in hints (`validated_pet_name`), skip demographics LLM and build from hints; otherwise try Ollama demographics and fall back to hints on error.
    - **Caveat:** skip is keyed on **validated** `pet.name` only. Junk tokens (e.g. Summary) do **not** count as hinted. A wrong name that still passes validation can skip the LLM — ranked pet-name heuristics, inline compound lines, and unlabeled inference reduce but do not eliminate this risk.
-5. **Clinical workspace (`LLM_CLINICAL_MODE`):** populate workspace clinical fields via heuristics ± optional **clinical narrative** LLM (`ClinicalNarrative`). These fields are **not persisted**; they feed clinical summary generation. See `specs/architecture.md` for narrative vs polish gating.
-6. **Clinical summary (`adapters/clinical_summary.py`):** always run at end of structuring — heuristic prose into `clinical.history`; optional **summary polish** LLM in `hybrid`/`llm` modes. FakeLLM: heuristic summary only.
+5. **Clinical workspace:** built from heuristics **only on heuristic fallback** (`finalize_clinical_summary_from_hints`). Not persisted except via `clinical.history`. **Not built** before an attempted LLM summary pass.
+6. **Clinical summary (`adapters/clinical_summary.py`):**
+   - **Gating:** summary generation runs only when `has_clinical_hints()` is true (visit/diagnosis/medication hints, or substantive clinical body text after `clinical_focus_text()`). Otherwise `clinical.history` and `meta.clinical_summary_source` remain null.
+   - **LLM path (`hybrid`/`llm`):** optional **`ClinicalSummaryOutput`** pass reads **extracted source text first** via `clinical_focus_text()` (prefers text from **`Historial…`** onward; truncates at ~12k chars with head+tail), plus optional **language hint** only — **no** structured visit blocks, diagnoses, or workspace facts in the prompt. Uses **`CLINICAL_SUMMARY_NUM_PREDICT` (1024)** tokens (hardcoded; not `OLLAMA_NUM_PREDICT`). On success → `meta.clinical_summary_source = llm`.
+   - **Heuristic fallback:** on LLM timeout/error, empty/whitespace LLM response, or **`heuristic` mode** → build workspace from hints and `build_heuristic_clinical_summary()` → `meta.clinical_summary_source = heuristic_fallback` or `heuristic` respectively.
+   - **FakeLLM:** heuristic summary only; sets `meta.clinical_summary_source = heuristic`.
 7. **Re-processing:** demographics and clinical summary refresh on **new upload** or when processing runs again; no separate re-process API in v1.
 
 ### Document text extraction (PDF and .docx)

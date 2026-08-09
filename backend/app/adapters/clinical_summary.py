@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
-import json
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.domain.extraction_models import ExtractionClinicalInfo, ExtractionRecord, Medication
+from app.domain.extraction_models import (
+    ExtractionClinicalInfo,
+    ExtractionRecord,
+    HistoryEntry,
+    Medication,
+)
 
 CLINICAL_SUMMARY_MAX = 2000
+CLINICAL_SUMMARY_NUM_PREDICT = 1024
 
 
-class ClinicalSummaryPolish(BaseModel):
-    """Single-field output for optional LLM polish of clinical.history."""
+class ClinicalSummaryOutput(BaseModel):
+    """Single-field structured output for the clinical summary LLM pass."""
 
     summary: str | None = Field(
         default=None,
@@ -23,9 +28,6 @@ class ClinicalSummaryPolish(BaseModel):
 
 
 _GENERIC_NOTES = (
-    "structured mainly from layout/visit heuristics",
-    "clinical fields filled from document heuristics",
-    "llm narrative skipped",
     "documento en español",
     "historial multi-visita",
     "multi-visita",
@@ -33,6 +35,24 @@ _GENERIC_NOTES = (
 
 _WEIGHT_RE = re.compile(r"\b(?:peso|weight)\s*[:\s]*[\d.,]+\s*kg\b", re.IGNORECASE)
 _CHIP_RE = re.compile(r"\b\d{9,15}\b")
+
+CLINICAL_SUMMARY_PROMPT = """You write clinical summaries for veterinarians reviewing imported medical records.
+
+Return JSON with a single `summary` field containing readable prose for a human reader.
+
+Requirements:
+- Maximum 2000 characters in `summary`.
+- Write 1–4 short paragraphs with complete sentences (not bullet fragments or label dumps).
+- Synthesize the most important clinical information across the whole document.
+- Include when present: key diagnoses/problems, visit timeline with dates where useful, examination findings, treatments/plans, and a brief mention of relevant medications (drug names only — not a full pharmacy list).
+- Use the document language (Spanish or English) when clear from the source.
+- Use ONLY facts from the source text. Never invent diagnoses, drugs, or dates.
+
+Forbidden in the summary:
+- Pet demographics (name, species, breed, sex, date of birth, microchip).
+- Owner/client identity or contact details (name, phone, email, address).
+- Generic headers like "Historial con N visitas desde…" unless clinically meaningful.
+"""
 
 
 def _is_spanish(record: ExtractionRecord) -> bool:
@@ -71,24 +91,6 @@ def _chief_complaint_for_summary(
                 return None
     sanitized = _sanitize_summary_fragment(chief, medication_names)
     return sanitized or None
-
-CLINICAL_SUMMARY_POLISH_PROMPT = """You write clinical summaries for veterinarians reviewing imported PDF records.
-
-Return JSON with a single `summary` field containing readable prose for a human reader.
-
-Requirements:
-- Maximum 2000 characters in `summary`.
-- Write 1–4 short paragraphs with complete sentences (not bullet fragments or label dumps).
-- Highlight the most important clinical information across the whole document.
-- Include when present: key diagnoses/problems, visit timeline with dates where useful, examination findings, treatments/plans, and a brief mention of relevant medications (drug names only — not a full pharmacy list).
-- Use the document language (Spanish or English) when clear from the source.
-- Use ONLY facts from the structured facts and source text. Never invent diagnoses, drugs, or dates.
-
-Forbidden in the summary:
-- Pet demographics (name, species, breed, sex, date of birth, microchip).
-- Owner/client identity or contact details (name, phone, email, address).
-- Generic headers like "Historial con N visitas desde…" unless clinically meaningful.
-"""
 
 
 def truncate_clinical_summary(text: str, max_len: int = CLINICAL_SUMMARY_MAX) -> str:
@@ -176,7 +178,35 @@ def _format_medications_paragraph(
     return _ensure_sentence(f"Relevant medications include {body}{extra}")
 
 
-def has_clinical_content(record: ExtractionRecord, hints: dict[str, Any]) -> bool:
+def clinical_workspace_from_hints(hints: dict[str, Any]) -> ExtractionClinicalInfo:
+    """Build temporary clinical workspace fields used for heuristic fallback only."""
+    entries = hints.get("visit_blocks") or []
+    diagnoses = hints.get("diagnosis_hints") or []
+    meds = hints.get("medication_hints") or []
+    chief = entries[-1].get("summary") if entries else None
+    return ExtractionClinicalInfo(
+        chief_complaint=chief,
+        diagnosis="; ".join(diagnoses) if diagnoses else None,
+        medications=[Medication(**m) for m in meds],
+        history_entries=[HistoryEntry(**e) for e in entries],
+    )
+
+
+def has_clinical_hints(hints: dict[str, Any], body: str = "") -> bool:
+    """Whether the document likely has clinical content worth summarizing."""
+    if (
+        hints.get("visit_blocks")
+        or hints.get("diagnosis_hints")
+        or hints.get("medication_hints")
+    ):
+        return True
+    from app.adapters.text_hints import clinical_focus_text
+
+    return len(clinical_focus_text(body).strip()) > 100
+
+
+def has_clinical_content(record: ExtractionRecord) -> bool:
+    """Whether heuristic workspace fields can produce a summary."""
     clinical = record.clinical
     if (
         clinical.diagnosis
@@ -187,35 +217,37 @@ def has_clinical_content(record: ExtractionRecord, hints: dict[str, Any]) -> boo
         or clinical.history_entries
     ):
         return True
-    if clinical.notes and not _is_generic_note(clinical.notes):
-        return True
-    return bool(
-        hints.get("visit_blocks")
-        or hints.get("diagnosis_hints")
-        or hints.get("medication_hints")
+    return bool(clinical.notes and not _is_generic_note(clinical.notes))
+
+
+def clinical_summary_user_prompt(
+    body: str,
+    *,
+    language_hint: str | None = None,
+    max_source_chars: int = 12000,
+) -> str:
+    from app.adapters.text_hints import clinical_focus_text
+
+    source = clinical_focus_text(body, max_chars=max_source_chars)
+    parts = [
+        "Write a readable clinical summary for a veterinarian.",
+        "Base the summary on the source text below.",
+    ]
+    if language_hint:
+        parts.append(f"Document language hint: {language_hint}")
+    parts.append(
+        "SOURCE TEXT (clinical body; exclude pet/owner demographics):\n" + source
     )
+    return "\n\n".join(parts)
 
 
-def clinical_facts_payload(record: ExtractionRecord) -> dict[str, Any]:
-    clinical = record.clinical
-    notes = clinical.notes
-    if _is_generic_note(notes):
-        notes = None
-    return {
-        "diagnosis": clinical.diagnosis,
-        "chief_complaint": clinical.chief_complaint,
-        "examination": clinical.examination,
-        "treatment": clinical.treatment,
-        "notes": notes,
-        "medications": _medication_names(clinical.medications),
-        "history_entries": [
-            {"date": entry.date, "summary": entry.summary}
-            for entry in clinical.history_entries or []
-            if entry.date or entry.summary
-        ],
-        "visit_date": record.visit.date,
-        "veterinarian": record.visit.veterinarian,
-    }
+def finalize_clinical_summary_from_hints(
+    record: ExtractionRecord, hints: dict[str, Any]
+) -> ExtractionRecord:
+    """Build heuristic workspace from hints and set clinical.history (fallback path)."""
+    data = record.model_dump()
+    data["clinical"] = clinical_workspace_from_hints(hints).model_dump()
+    return finalize_clinical_summary(ExtractionRecord.model_validate(data))
 
 
 def build_heuristic_clinical_summary(record: ExtractionRecord) -> str:
@@ -335,37 +367,16 @@ def build_heuristic_clinical_summary(record: ExtractionRecord) -> str:
     return truncate_clinical_summary("\n\n".join(paragraphs))
 
 
-def summary_polish_user_prompt(
-    baseline: str,
-    hints: dict[str, Any],
-    body: str,
-    record: ExtractionRecord,
-    max_source_chars: int = 6000,
-) -> str:
-    from app.adapters.text_hints import clinical_focus_text
-
-    source = clinical_focus_text(body, max_chars=max_source_chars)
-    facts = clinical_facts_payload(record)
-    hint_block = {
-        "diagnosis_hints": hints.get("diagnosis_hints") or [],
-        "medication_hints": [
-            m.get("name") for m in (hints.get("medication_hints") or []) if m.get("name")
-        ],
-        "visit_blocks": (hints.get("visit_blocks") or [])[-12:],
-    }
-    baseline_block = baseline.strip() or "(no baseline — synthesize from facts and text)"
-    return (
-        "Write a readable clinical summary for a veterinarian.\n\n"
-        f"Structured facts:\n{json.dumps(facts, ensure_ascii=False, indent=2)}\n\n"
-        f"Extraction hints:\n{json.dumps(hint_block, ensure_ascii=False, indent=2)}\n\n"
-        f"Baseline draft (improve into clear prose):\n{baseline_block}\n\n"
-        "SOURCE TEXT (clinical body; exclude pet/owner header columns):\n"
-        f"{source}"
-    )
+def with_clinical_summary_source(
+    record: ExtractionRecord, source: Literal["llm", "heuristic_fallback", "heuristic"]
+) -> ExtractionRecord:
+    data = record.model_dump()
+    data["meta"]["clinical_summary_source"] = source
+    return ExtractionRecord.model_validate(data)
 
 
 def finalize_clinical_summary(record: ExtractionRecord) -> ExtractionRecord:
-    """Set clinical.history from structured clinical content (extraction / re-process only)."""
+    """Set clinical.history from heuristic clinical content (fallback when LLM unavailable)."""
     summary = build_heuristic_clinical_summary(record)
     data = record.model_dump()
     data["clinical"]["history"] = summary or None

@@ -55,7 +55,7 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 
 - [x] `PROCESSING_MODE=async` default with FastAPI `BackgroundTasks`
 - [x] UI polling while `status=processing`
-- [x] Hybrid clinical mode: heuristics-first; narrative LLM when hints weak; summary polish when hints sufficient (see architecture structuring strategy)
+- [x] Hybrid clinical mode: heuristics-first workspace; optional single LLM clinical summary pass (see architecture structuring strategy)
 - [x] Skip demographics LLM when **validated** `pet.name` hinted
 - [x] LLM timeout/error falls back to heuristics instead of hard-failing recoverable cases
 - [x] Env knobs: `LLM_CLINICAL_MODE`, `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_NUM_PREDICT`, `OLLAMA_NUM_CTX`
@@ -99,17 +99,17 @@ Ordered slices. Each task maps to acceptance criteria in `specs/acceptance.md`.
 ## T13 — Clinical summary (done)
 
 - [x] `adapters/clinical_summary.py`: heuristic prose summary → `clinical.history` (≤2000 chars, Spanish/English, sanitization)
-- [x] Optional LLM summary polish pass (`ClinicalSummaryPolish`); gating per `LLM_CLINICAL_MODE` (inverse of narrative LLM in hybrid)
-- [x] UI **Clinical summary** section: read-only always; paragraph preservation
-- [x] Save preserves loaded `clinical.history`; dirty check excludes summary
-- [x] `tests/test_clinical_summary.py`; frontend RecordForm / `recordDisplay` tests
+- [x] Optional single **text-first** LLM clinical summary pass (`ClinicalSummaryOutput`); heuristic fallback builds workspace from hints on failure; `meta.clinical_summary_source` (`llm` / `heuristic_fallback` / `heuristic`)
+- [x] UI **Clinical summary** section: read-only always; paragraph preservation; **fallback notice** when `clinical_summary_source=heuristic_fallback`
+- [x] Save preserves loaded `clinical.history` and `meta` (including `clinical_summary_source`); dirty check excludes summary
+- [x] `tests/test_clinical_summary.py`, `tests/test_clinical_summary_pipeline.py`; frontend RecordForm / `recordDisplay` tests
 - [x] Align specs (data-model extraction notes, architecture, acceptance, scope, tasks, ADR, README)
 
 ## T14 — Slim persisted structured record (done)
 
 - [x] Persist only pet (six fields), owner, `clinical.history`, and meta via `to_persisted_record()`
 - [x] Remove Medications section and non-persisted clinical/visit fields from UI and PATCH payload
-- [x] Extraction workspace (`ExtractionRecord`) retains visit/meds/diagnosis for summary generation only
+- [x] Extraction workspace (`ExtractionRecord`) built from hints **only on heuristic fallback** (not before LLM summary pass)
 - [x] Align specs (data-model, acceptance, architecture, scope, tasks, problem, docs)
 
 ## T15 — Progressive processing UX (done)

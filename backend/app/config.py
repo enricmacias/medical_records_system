@@ -23,9 +23,9 @@ class Settings(BaseSettings):
     processing_mode: str = "async"
     # When true, skip demographics LLM if heuristics already found pet.name
     llm_skip_demographics_when_hinted: bool = True
-    # heuristic: no LLM clinical call (fastest)
-    # hybrid: heuristics first; LLM only when clinical hints are weak (default)
-    # llm: always call LLM for clinical narrative (slowest, may timeout on 7B)
+    # heuristic: no LLM clinical call (fastest; heuristic summary only)
+    # hybrid: heuristics workspace + optional clinical summary LLM (default)
+    # llm: always attempt clinical summary LLM (may timeout on 7B)
     llm_clinical_mode: str = "hybrid"
     ollama_num_predict: int = 384
     ollama_num_ctx: int = 4096

@@ -279,6 +279,8 @@ export default function RecordForm({
   const lowConfidence = isLowExtractionConfidence(data.meta)
 
   const clinicalHighlight = fieldHighlight('clinical.history', seed.clinical?.history)
+  const clinicalSummaryFallback =
+    seed.meta?.clinical_summary_source === 'heuristic_fallback' && clinicalSummary
 
   return (
     <form
@@ -384,6 +386,11 @@ export default function RecordForm({
 
       <fieldset className={clinicalHighlight ? 'fieldset-flagged-missing' : undefined}>
         <legend>{t('form.clinicalSummary')}</legend>
+        {clinicalSummaryFallback && (
+          <p className="form-confidence-notice" role="status">
+            {t('form.clinicalSummaryFallbackNotice')}
+          </p>
+        )}
         {isProcessing && !clinicalSummary ? (
           processing ? (
             <ProcessingIndicator processing={processing} />

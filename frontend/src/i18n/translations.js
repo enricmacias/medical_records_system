@@ -69,6 +69,8 @@ export const translations = {
       email: 'Email',
       address: 'Address',
       summaryHint: 'Auto-generated on upload; not editable.',
+      clinicalSummaryFallbackNotice:
+        'The AI summary could not be generated in time. Showing a rule-based summary instead — review for completeness.',
       generatingSummary: 'Generating clinical summary…',
       confidence: 'Confidence: {{value}}',
       confidenceLabel: 'Confidence',
@@ -123,9 +125,7 @@ export const translations = {
       extracting_text: 'Reading text from your document…',
       demographics: 'Extracting pet and owner details from the document…',
       demographics_ready: 'Pet and owner details are ready. Clinical summary in progress…',
-      clinical_analysis: 'Reviewing visits, diagnoses, and medications…',
       clinical_summary: 'Writing the clinical summary…',
-      clinical_summary_polish: 'Polishing the clinical summary with AI (this can take a minute)…',
       completing: 'Saving your structured record…',
       processing: 'Processing your document…',
     },
@@ -198,6 +198,8 @@ export const translations = {
       email: 'Correo',
       address: 'Dirección',
       summaryHint: 'Generado automáticamente al subir; no editable.',
+      clinicalSummaryFallbackNotice:
+        'No se pudo generar el resumen con IA a tiempo. Se muestra un resumen basado en reglas — revísalo por si falta información.',
       generatingSummary: 'Generando resumen clínico…',
       confidence: 'Confianza: {{value}}',
       confidenceLabel: 'Confianza',
@@ -253,10 +255,7 @@ export const translations = {
       demographics: 'Extrayendo datos de mascota y propietario del documento…',
       demographics_ready:
         'Datos de mascota y propietario listos. Resumen clínico en curso…',
-      clinical_analysis: 'Revisando visitas, diagnósticos y medicación…',
       clinical_summary: 'Escribiendo el resumen clínico…',
-      clinical_summary_polish:
-        'Puliendo el resumen clínico con IA (puede tardar un minuto)…',
       completing: 'Guardando el registro estructurado…',
       processing: 'Procesando tu documento…',
     },

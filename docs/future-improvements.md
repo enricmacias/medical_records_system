@@ -6,7 +6,7 @@
 - **Clinic-specific templates** and richer multilingual prompt packs beyond ES/EN heuristics
 - **Improve pet name detection** — heuristics and demographics LLM still miss names when `mascota` / `patient` / `paciente` appear heavily in historial prose (not just headers), or when the pet has an unusual or uncommon proper name; ranked hints can still skip the LLM when a wrong-but-valid name is chosen
 - **Improve demographic extraction from Word tables** — `pet.breed`, `pet.date_of_birth`, `owner.phone`, `owner.email`, and `owner.address` are often missed when values live in table cells rather than plain label lines (v1 flattens rows to `cell | cell | cell` without cell-aware label/value pairing)
-- **Richer clinical summary** — improve `clinical.history` generation (heuristic baseline and/or LLM polish) to produce a more polished, readable résumé of the full clinical record
+- **Richer clinical summary** — improve `clinical.history` quality (e.g. env-configurable `CLINICAL_SUMMARY_NUM_PREDICT`, smarter `clinical_focus_text` truncation, optional light hints for LLM without reverting to full workspace pre-pass)
 - **Postgres + object storage** for multi-user deployments
 - **AuthN/AuthZ** and audit trail for clinical compliance
 - **Expand pet breed catalog** (`adapters/pet_breed_catalog.py`) for mixed breeds, regional names, and breeds missing from the finite v1 list (today unknown breeds are omitted on extraction, not stored)

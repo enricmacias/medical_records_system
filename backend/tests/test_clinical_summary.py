@@ -3,12 +3,16 @@
 from app.adapters.clinical_summary import (
     CLINICAL_SUMMARY_MAX,
     build_heuristic_clinical_summary,
-    clinical_facts_payload,
+    clinical_summary_user_prompt,
+    clinical_workspace_from_hints,
     finalize_clinical_summary,
+    finalize_clinical_summary_from_hints,
     has_clinical_content,
-    summary_polish_user_prompt,
+    has_clinical_hints,
     truncate_clinical_summary,
+    with_clinical_summary_source,
 )
+from app.domain.extraction_models import to_persisted_record
 from app.adapters.llm import FakeLLMStructurer
 from app.domain.extraction_models import (
     ExtractionClinicalInfo,
@@ -234,61 +238,113 @@ class TestFinalizeAndHelpers:
         finalized = finalize_clinical_summary(record)
         assert finalized.clinical.history is None
 
-    def test_has_clinical_content_from_structured_fields(self) -> None:
-        record = _record(clinical=ExtractionClinicalInfo(diagnosis="Otitis"))
-        assert has_clinical_content(record, {}) is True
-
-    def test_has_clinical_content_from_hints_when_fields_empty(self) -> None:
-        record = _record(clinical=ExtractionClinicalInfo())
+    def test_has_clinical_hints_from_visit_blocks(self) -> None:
         hints = {"visit_blocks": [{"date": "01/01/20", "summary": "Visit"}]}
-        assert has_clinical_content(record, hints) is True
+        assert has_clinical_hints(hints, "") is True
 
-    def test_has_clinical_content_false_for_generic_notes_only(self) -> None:
-        record = _record(
-            clinical=ExtractionClinicalInfo(
-                notes="Structured mainly from layout/visit heuristics.",
-            ),
+    def test_has_clinical_hints_from_body_when_hints_empty(self) -> None:
+        body = "Historial completo\n" + ("Clinical visit note. " * 20)
+        assert has_clinical_hints({}, body) is True
+
+    def test_has_clinical_hints_false_for_thin_body_without_hints(self) -> None:
+        assert has_clinical_hints({}, "Short vet note.") is False
+
+    def test_clinical_summary_user_prompt_omits_language_when_absent(self) -> None:
+        prompt = clinical_summary_user_prompt("Visit notes about otitis.")
+        assert "Document language hint" not in prompt
+        assert "Visit notes about otitis." in prompt
+
+    def test_clinical_summary_user_prompt_prefers_historial_section(self) -> None:
+        body = (
+            "Datos de la Mascota\nMARLEY\n"
+            "Historial completo\n"
+            "08/12/19 - Urgencias por costra.\n"
         )
-        assert has_clinical_content(record, {}) is False
+        prompt = clinical_summary_user_prompt(body)
+        assert "Historial completo" in prompt
+        assert "Urgencias por costra" in prompt
+        assert "MARLEY" not in prompt
 
-    def test_clinical_facts_payload_nulls_generic_notes(self) -> None:
+    def test_with_clinical_summary_source_updates_meta(self) -> None:
         record = _record(
-            clinical=ExtractionClinicalInfo(
-                diagnosis="Otitis",
-                notes="LLM narrative skipped due to timeout.",
-            ),
-        )
-        facts = clinical_facts_payload(record)
-        assert facts["diagnosis"] == "Otitis"
-        assert facts["notes"] is None
-
-    def test_summary_polish_user_prompt_includes_facts_baseline_and_source(self) -> None:
-        record = _record(
-            clinical=ExtractionClinicalInfo(
-                diagnosis="Giardiasis",
-                history_entries=[HistoryEntry(date="08/12/19", summary="Urgencias")],
-            ),
+            clinical=ExtractionClinicalInfo(history="Summary text."),
             meta=MetaInfo(source_language="es"),
         )
+        tagged = with_clinical_summary_source(record, "heuristic_fallback")
+        assert tagged.meta.clinical_summary_source == "heuristic_fallback"
+        assert tagged.clinical.history == "Summary text."
+
+    def test_finalize_from_hints_does_not_set_summary_source(self) -> None:
+        record = _record(meta=MetaInfo(source_language="es"))
+        hints = {"visit_blocks": [{"date": "08/12/19", "summary": "Urgencias"}]}
+        finalized = finalize_clinical_summary_from_hints(record, hints)
+        assert finalized.clinical.history
+        assert finalized.meta.clinical_summary_source is None
+
+    def test_to_persisted_record_includes_fallback_source(self) -> None:
+        record = _record(
+            clinical=ExtractionClinicalInfo(history="Heuristic summary."),
+            meta=MetaInfo(
+                source_language="en",
+                clinical_summary_source="heuristic_fallback",
+            ),
+        )
+        persisted = to_persisted_record(record)
+        assert persisted.meta.clinical_summary_source == "heuristic_fallback"
+        assert persisted.clinical.history == "Heuristic summary."
+
+    def test_has_clinical_content_from_structured_fields(self) -> None:
+        record = _record(clinical=ExtractionClinicalInfo(diagnosis="Otitis"))
+        assert has_clinical_content(record) is True
+
+    def test_has_clinical_content_false_when_workspace_empty(self) -> None:
+        record = _record(clinical=ExtractionClinicalInfo())
+        assert has_clinical_content(record) is False
+
+    def test_clinical_summary_user_prompt_is_text_first(self) -> None:
+        prompt = clinical_summary_user_prompt(
+            "Clinical body text about giardia.",
+            language_hint="es",
+        )
+        assert "SOURCE TEXT" in prompt
+        assert "Clinical body text about giardia." in prompt
+        assert "Document language hint: es" in prompt
+        assert "Structured facts" not in prompt
+        assert "Extraction hints" not in prompt
+
+    def test_finalize_from_hints_builds_workspace_and_history(self) -> None:
+        record = _record(meta=MetaInfo(source_language="es"))
         hints = {
             "diagnosis_hints": ["Giardiasis"],
             "medication_hints": [{"name": "Fortiflora"}],
             "visit_blocks": [{"date": "08/12/19", "summary": "Urgencias"}],
         }
-        prompt = summary_polish_user_prompt(
-            "Baseline draft.",
-            hints,
-            "Clinical body text about giardia.",
-            record=record,
-        )
-        assert "Structured facts:" in prompt
-        assert "Giardiasis" in prompt
-        assert "Baseline draft." in prompt
-        assert "Clinical body text about giardia." in prompt
-        assert "Extraction hints:" in prompt
+        finalized = finalize_clinical_summary_from_hints(record, hints)
+        assert finalized.clinical.history
+        assert "Giardiasis" in finalized.clinical.history
+        assert "Fortiflora" in finalized.clinical.history
+
+    def test_clinical_workspace_from_hints_builds_visit_medications_and_diagnosis(
+        self,
+    ) -> None:
+        hints = {
+            "visit_blocks": [{"date": "08/12/19", "summary": "Urgencias"}],
+            "diagnosis_hints": ["Giardiasis", "Conjuntivitis"],
+            "medication_hints": [{"name": "Tobradex"}, {"name": "Fortiflora"}],
+        }
+        clinical = clinical_workspace_from_hints(hints)
+        assert clinical.history_entries
+        assert clinical.diagnosis and "Giardiasis" in clinical.diagnosis
+        assert any(m.name == "Tobradex" for m in clinical.medications)
+        assert any(m.name == "Fortiflora" for m in clinical.medications)
+        assert clinical.chief_complaint == "Urgencias"
 
 
 class TestFakeLLMIntegration:
+    def test_fake_llm_sets_heuristic_summary_source(self) -> None:
+        record = FakeLLMStructurer().structure(SPANISH_HEADER)
+        assert record.meta.clinical_summary_source == "heuristic"
+
     def test_spanish_header_generates_readable_spanish_summary(self) -> None:
         record = FakeLLMStructurer().structure(SPANISH_HEADER)
         assert isinstance(record, MedicalRecord)

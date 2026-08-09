@@ -32,7 +32,7 @@ def test_fake_llm_emits_progress_and_partial_callbacks() -> None:
     )
 
     assert record.pet.name == "MARLEY"
-    assert len(progress_events) >= 4
+    assert len(progress_events) >= 3
     assert progress_events[0].step == "demographics"
     assert progress_events[0].percent == 20
     assert any(e.step == "clinical_summary" for e in progress_events)
@@ -168,7 +168,7 @@ def test_failed_record_clears_processing(tmp_path: Path) -> None:
         record.id,
         progress=ProcessingProgress(
             percent=50,
-            step="clinical_analysis",
+            step="clinical_summary",
             message="Reviewing visits…",
         ),
     )

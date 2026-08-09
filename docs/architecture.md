@@ -18,7 +18,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 
 1. **Spec-anchored SDD** — behavior lives in `specs/` before code.
 2. **Adapter interfaces** — document extractors and LLM can be swapped without API changes.
-3. **Hybrid extraction** — heuristics first (inline compound demographics, label-free species/breed, global inference, **ranked pet-name heuristics** with `validate_and_refine_pet_name`, pet name/breed validation, visit blocks); species normalized to Dog/Cat and sex to Male/Female when inferable; optional LLM for weak clinical hints (narrative) and/or summary polish; heuristic clinical summary always generated; timeout falls back to heuristics.
+3. **Hybrid extraction** — heuristics first (inline compound demographics, label-free species/breed, global inference, **ranked pet-name heuristics** with `validate_and_refine_pet_name`, pet name/breed validation, visit blocks); species normalized to Dog/Cat and sex to Male/Female when inferable; optional **text-first** single LLM clinical summary pass in `hybrid`/`llm` modes; heuristic workspace + summary on timeout/error; `meta.clinical_summary_source` records provenance; UI fallback notice when LLM fails.
 4. **Async by default** — upload returns `processing`; UI polls until `completed`/`failed`; partial pet/owner/meta and `processing` percent/messages appear before clinical summary completes.
 5. **Human-in-the-loop** — pet (six demographic fields) and owner are editable; clinical summary and meta are read-only in v1. Site UI in English or Spanish (toggle); document language separate (`meta.source_language`). **Confidence UX** highlights missing and uncertain fields from `meta` without API changes.
 6. **Fake LLM** — tests and demos work without GPU/model download.
@@ -27,7 +27,7 @@ See also [specs/architecture.md](../specs/architecture.md) and [docs/adr/](./adr
 
 - Uploads are text-based PDF or .docx (not scanned PDFs or image-only Word content; legacy .doc not supported)
 - Single user, no auth
-- Ollama is optional for many multi-visit historiales under `hybrid`/`heuristic` (heuristic clinical summary always produced); polish and narrative LLM require Ollama or use `llm` mode for weak-hint documents
+- Ollama is optional for many multi-visit historiales under `hybrid`/`heuristic` (heuristic clinical summary on timeout or when Ollama is down); `hybrid`/`llm` attempt an LLM summary when Ollama is available
 - Ollama, when used from Docker, is typically reached via `host.docker.internal` (Mac/Windows) or documented host networking on Linux
 - Multilingual **document extraction** is intentional (Spanish clinic headers and historiales are first-class); other languages best-effort via the LLM when invoked. **Site UI** localization is English/Spanish only (see `specs/data-model.md` UI localization).
 

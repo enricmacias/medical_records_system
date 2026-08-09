@@ -233,6 +233,129 @@ describe('RecordForm', () => {
     })
   })
 
+  it('shows fallback notice when clinical summary used heuristic fallback', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          meta: {
+            ...sampleRecord.meta,
+            clinical_summary_source: 'heuristic_fallback',
+          },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText(
+        /AI summary could not be generated in time/i,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Stored clinical summary from extraction.')).toBeInTheDocument()
+  })
+
+  it('does not show fallback notice for heuristic-only mode', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          meta: {
+            ...sampleRecord.meta,
+            clinical_summary_source: 'heuristic',
+          },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByText(/AI summary could not be generated in time/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows Spanish fallback notice when site language is Spanish', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          meta: {
+            ...sampleRecord.meta,
+            clinical_summary_source: 'heuristic_fallback',
+          },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+      { locale: 'es' },
+    )
+
+    expect(
+      screen.getByText(/No se pudo generar el resumen con IA a tiempo/i),
+    ).toBeInTheDocument()
+  })
+
+  it('does not show fallback notice when summary came from LLM', () => {
+    renderWithI18n(
+      <RecordForm
+        initial={{
+          ...sampleRecord,
+          meta: {
+            ...sampleRecord.meta,
+            clinical_summary_source: 'llm',
+          },
+        }}
+        onSave={vi.fn()}
+        editing={false}
+        onDirtyChange={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByText(/AI summary could not be generated in time/i),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/No se pudo generar el resumen con IA a tiempo/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('preserves clinical_summary_source on save', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+
+    renderWithI18n(
+      <div>
+        <button type="submit" form={STRUCTURED_FORM_ID}>
+          Save corrections
+        </button>
+        <RecordForm
+          initial={{
+            ...sampleRecord,
+            meta: {
+              ...sampleRecord.meta,
+              clinical_summary_source: 'heuristic_fallback',
+            },
+          }}
+          onSave={onSave}
+          editing={true}
+          onDirtyChange={vi.fn()}
+        />
+      </div>,
+    )
+
+    await user.type(screen.getByLabelText('Phone'), '+34 600 000 000')
+    await user.click(screen.getByRole('button', { name: 'Save corrections' }))
+
+    expect(onSave.mock.calls[0][0].meta.clinical_summary_source).toBe(
+      'heuristic_fallback',
+    )
+  })
+
   it('shows progress while clinical summary is still generating', () => {
     renderWithI18n(
       <RecordForm

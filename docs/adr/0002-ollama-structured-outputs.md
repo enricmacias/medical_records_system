@@ -16,17 +16,15 @@ We need free, local structuring into a fixed JSON schema, without cloud API cost
 2. Run **layout/visit heuristics first** (Spanish/English headers, chip, inline compound demographics, label-free species/breed header patterns, **global demographic inference** (~100 header lines, pipe-table rows), **ranked pet-name heuristics** with `validate_and_refine_pet_name` at end of hint pass, **pet name proper-name validation**, **breed catalog validation**, species/sex normalization, dated visit blocks, diagnosis/medication hints).
 3. Default **`LLM_CLINICAL_MODE=hybrid`**:
    - Skip demographics LLM when a **validated** `pet.name` is already present in hints (`validated_pet_name`).
-   - **Clinical narrative LLM** (`ClinicalNarrative`): call only when clinical heuristics are **weak** (no visit blocks, diagnosis hints, or medication hints).
-   - **Clinical summary polish LLM** (`ClinicalSummaryPolish`): call when clinical heuristics are **sufficient** — rewrites heuristic baseline into readable `clinical.history` prose.
-   - Otherwise (weak hints): narrative LLM may run; polish is skipped in hybrid.
-4. Always generate **heuristic clinical summary** (`adapters/clinical_summary.py`) at end of structuring; optional polish overwrites when successful.
-5. Default model remains **`qwen2.5:7b`** (env-configurable).
+   - **Clinical summary LLM** (`ClinicalSummaryOutput`): single pass that writes persisted `clinical.history` from **extracted source text** (`clinical_focus_text` — prefers `Historial…` section; ~12k char truncation) plus optional language hint only. **No structured hints or workspace facts** in the LLM prompt.
+   - On LLM timeout/error/empty response, build heuristic workspace from hints and fall back to **`build_heuristic_clinical_summary`**, setting `meta.clinical_summary_source = heuristic_fallback`.
+4. Modes `heuristic` (no clinical LLM; heuristic summary only) and `llm` (always attempt clinical summary LLM) remain available for speed vs quality trade-offs.
+5. Default model remains **`qwen2.5:7b`** (env-configurable). Clinical summary LLM uses a higher `num_predict` (1024) than demographics (384).
 6. On LLM timeout/error, **keep heuristic results** (including heuristic summary) and complete the record when possible rather than failing recoverable cases.
-7. Modes `heuristic` (no clinical LLM; heuristic summary only) and `llm` (narrative + polish always; up to two clinical LLM calls) remain available for speed vs quality trade-offs.
 
 ## Consequences
 
-- Multi-visit Spanish clinic documents (PDF or .docx) often complete with heuristic clinical summary without narrative LLM; hybrid may still call Ollama for summary polish when hints are strong. Structuring consumes plain `raw_text` regardless of source format.
+- Multi-visit Spanish clinic documents (PDF or .docx) often complete with heuristic clinical summary when Ollama is down or times out. Under `hybrid`/`llm`, Ollama may improve summary quality when available. Structuring consumes plain `raw_text` regardless of source format.
 - JSON shape remains validated by Pydantic; humans edit **pet** (six fields) and **owner** in the UI; clinical summary is read-only in v1
 - Reviewers can use `LLM_PROVIDER=fake` or hybrid without a GPU (FakeLLM produces heuristic summary)
 - Heuristics are template-biased (stronger on ES/EN clinic headers, including label-free species/breed lines, global inference, **ranked pet-name extraction**, and extraction-time name/breed validation); unusual formats still benefit from `llm` mode when hardware allows

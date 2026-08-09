@@ -12,18 +12,11 @@ from fastapi import UploadFile
 from fastapi.testclient import TestClient
 
 from app.adapters.llm import (
-    ClinicalNarrative,
     OllamaStructurer,
     _inline_json_schema,
     build_structurer,
 )
 from app.adapters.pdf_extractor import PdfplumberExtractor
-from app.adapters.text_hints import build_layout_hints
-from app.domain.extraction_models import (
-    ExtractionClinicalInfo,
-    ExtractionRecord,
-    Medication,
-)
 from app.domain.models import MedicalRecord, PetInfo
 from app.domain.processing import ProcessingProgress
 from app.services.records import RecordService
@@ -31,13 +24,6 @@ from app.services.store import RecordStore
 from tests.sample_documents import make_sample_pdf_bytes
 from tests.test_spanish_extraction import SPANISH_HEADER
 from tests.test_inline_demographics import INLINE_NOMBRE_DOC
-
-
-THIN_TEXT = """
-Veterinary note
-Patient seen today for checkup.
-No dated visit list.
-"""
 
 
 @pytest.fixture()
@@ -51,68 +37,20 @@ def ollama_structurer() -> OllamaStructurer:
     )
 
 
-def test_clinical_hints_sufficient_for_historial(ollama_structurer: OllamaStructurer) -> None:
-    hints = build_layout_hints(SPANISH_HEADER)
-    assert ollama_structurer._clinical_hints_sufficient(hints) is True
-    assert ollama_structurer._should_call_clinical_llm(hints) is False
+def test_hybrid_mode_tries_clinical_summary_llm(ollama_structurer: OllamaStructurer) -> None:
+    assert ollama_structurer._should_use_clinical_summary_llm() is True
 
 
-def test_clinical_hints_insufficient_for_thin_text(ollama_structurer: OllamaStructurer) -> None:
-    hints = build_layout_hints(THIN_TEXT)
-    assert ollama_structurer._clinical_hints_sufficient(hints) is False
-    assert ollama_structurer._should_call_clinical_llm(hints) is True
-
-
-def test_heuristic_mode_never_calls_clinical_llm(ollama_structurer: OllamaStructurer) -> None:
+def test_heuristic_mode_never_tries_clinical_summary_llm(
+    ollama_structurer: OllamaStructurer,
+) -> None:
     ollama_structurer.clinical_mode = "heuristic"
-    thin_hints = build_layout_hints(THIN_TEXT)
-    assert ollama_structurer._should_call_clinical_llm(thin_hints) is False
+    assert ollama_structurer._should_use_clinical_summary_llm() is False
 
 
-def test_llm_mode_always_calls_clinical_llm(ollama_structurer: OllamaStructurer) -> None:
+def test_llm_mode_always_tries_clinical_summary_llm(ollama_structurer: OllamaStructurer) -> None:
     ollama_structurer.clinical_mode = "llm"
-    rich_hints = build_layout_hints(SPANISH_HEADER)
-    assert ollama_structurer._should_call_clinical_llm(rich_hints) is True
-
-
-def test_clinical_from_hints_builds_visit_medications_and_diagnosis(
-    ollama_structurer: OllamaStructurer,
-) -> None:
-    hints = build_layout_hints(SPANISH_HEADER)
-    clinical = ollama_structurer._clinical_from_hints(hints)
-    assert clinical.history_entries
-    assert clinical.diagnosis and "Giardiasis" in clinical.diagnosis
-    assert any(m.name == "Tobradex" for m in clinical.medications)
-    assert any(m.name == "Fortiflora" for m in clinical.medications)
-    assert clinical.chief_complaint
-    assert clinical.history is None
-
-
-def test_merge_narrative_overwrites_only_non_empty_fields(
-    ollama_structurer: OllamaStructurer,
-) -> None:
-    base = ExtractionClinicalInfo(
-        chief_complaint="old chief",
-        history="old history",
-        examination=None,
-        treatment=None,
-        medications=[Medication(name="Fortiflora")],
-        notes="heuristic note",
-    )
-    narrative = ClinicalNarrative(
-        chief_complaint="new chief",
-        history=None,
-        examination="exam ok",
-        treatment="continue diet",
-        notes=None,
-    )
-    merged = ollama_structurer._merge_narrative(base, narrative)
-    assert merged.chief_complaint == "new chief"
-    assert merged.history == "old history"
-    assert merged.examination == "exam ok"
-    assert merged.treatment == "continue diet"
-    assert merged.notes == "heuristic note"
-    assert merged.medications[0].name == "Fortiflora"
+    assert ollama_structurer._should_use_clinical_summary_llm() is True
 
 
 def test_heuristic_mode_structures_spanish_without_ollama() -> None:
@@ -148,12 +86,25 @@ def test_llm_timeout_falls_back_to_heuristics_instead_of_failing() -> None:
         base_url="http://127.0.0.1:9",
         model="unused",
         timeout_seconds=0.01,
-        clinical_mode="llm",  # force clinical LLM call
+        clinical_mode="llm",  # force clinical summary LLM call
         skip_demographics_when_hinted=True,
     )
     record = structurer.structure(SPANISH_HEADER)
     assert record.pet.name == "MARLEY"
     assert record.clinical.history
+    assert record.meta.clinical_summary_source == "heuristic_fallback"
+
+
+def test_heuristic_mode_sets_heuristic_summary_source() -> None:
+    structurer = OllamaStructurer(
+        base_url="http://127.0.0.1:9",
+        model="unused",
+        clinical_mode="heuristic",
+        skip_demographics_when_hinted=True,
+    )
+    record = structurer.structure(SPANISH_HEADER)
+    assert record.clinical.history
+    assert record.meta.clinical_summary_source == "heuristic"
 
 
 def test_demographics_llm_failure_falls_back_to_hints() -> None:
@@ -369,8 +320,8 @@ def test_process_record_passes_progress_callbacks_to_structurer(tmp_path: Path) 
             on_progress(
                 ProcessingProgress(
                     percent=50,
-                    step="clinical_analysis",
-                    message="Reviewing visits…",
+                    step="clinical_summary",
+                    message="Writing the clinical summary…",
                 )
             )
         if on_partial:

@@ -13,12 +13,15 @@ from pydantic import BaseModel, Field
 from app.domain.processing import ProcessingProgress
 
 from app.adapters.clinical_summary import (
-    CLINICAL_SUMMARY_POLISH_PROMPT,
-    ClinicalSummaryPolish,
+    CLINICAL_SUMMARY_NUM_PREDICT,
+    CLINICAL_SUMMARY_PROMPT,
+    ClinicalSummaryOutput,
+    clinical_summary_user_prompt,
     finalize_clinical_summary,
-    has_clinical_content,
-    summary_polish_user_prompt,
+    finalize_clinical_summary_from_hints,
+    has_clinical_hints,
     truncate_clinical_summary,
+    with_clinical_summary_source,
 )
 from app.adapters.text_hints import (
     build_layout_hints,
@@ -26,7 +29,6 @@ from app.adapters.text_hints import (
     normalize_extracted_text,
     normalize_species_dog_cat,
     normalize_sex_male_female,
-    infer_species_from_text,
     resolve_breed,
     resolve_pet_name,
     split_for_long_document,
@@ -56,14 +58,7 @@ Hard rules:
 - Two-column headers: "Datos de la Mascota" (left/pet) vs "Datos del Cliente" (right/owner).
   Do NOT put the owner name into pet.name.
 - Spanish labels: Nombre, Especie, Raza, F/Nto, Sexo, Nº Chip, Capa.
-- For HISTORIAL COMPLETO: fill clinical fields; do not leave them all null when visits exist.
 """
-
-CLINICAL_NARRATIVE_PROMPT = """Write a short clinical summary from the visit snippets.
-Return JSON only. Use only facts in the text. Keep each field under 2 sentences.
-If unknown, use null. Do not list every visit.
-"""
-
 
 ProgressCallback = Callable[[ProcessingProgress], None]
 PartialCallback = Callable[[MedicalRecord], None]
@@ -84,16 +79,6 @@ class DemographicsBundle(BaseModel):
     owner: OwnerInfo = Field(default_factory=OwnerInfo)
     visit: VisitInfo = Field(default_factory=VisitInfo)
     meta: MetaInfo = Field(default_factory=MetaInfo)
-
-
-class ClinicalNarrative(BaseModel):
-    """Tiny schema for a fast optional LLM pass."""
-
-    chief_complaint: str | None = Field(default=None)
-    history: str | None = Field(default=None)
-    examination: str | None = Field(default=None)
-    treatment: str | None = Field(default=None)
-    notes: str | None = Field(default=None)
 
 
 def _inline_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -221,49 +206,17 @@ class OllamaStructurer(MedicalRecordStructurer):
             meta=demographics.meta,
         )
         record = self._apply_demographics_fallbacks(record, hints)
+        record = self._apply_visit_and_meta(record, hints)
         if on_partial:
             on_partial(to_persisted_record(record))
 
         _emit_progress(
             on_progress,
             50,
-            "clinical_analysis",
-            "Reviewing visits, diagnoses, and medications…",
-        )
-        clinical = self._clinical_from_hints(hints)
-        if self._should_call_clinical_llm(hints):
-            try:
-                narrative = self._chat_model(
-                    model_cls=ClinicalNarrative,
-                    system=CLINICAL_NARRATIVE_PROMPT,
-                    user=self._clinical_user_prompt(hints, body),
-                )
-                clinical = self._merge_narrative(clinical, narrative)
-            except Exception:
-                if not clinical.notes:
-                    clinical.notes = (
-                        "Clinical fields filled from document heuristics; "
-                        "LLM narrative skipped (timeout or error)."
-                    )
-
-        record = ExtractionRecord(
-            pet=record.pet,
-            owner=record.owner,
-            visit=record.visit,
-            clinical=clinical,
-            meta=record.meta,
-        )
-        record = self._apply_fallbacks(record, hints)
-
-        _emit_progress(
-            on_progress,
-            65,
             "clinical_summary",
             "Writing the clinical summary…",
         )
-        record = self._finalize_clinical_summary(
-            record, hints, body, on_progress=on_progress
-        )
+        record = self._produce_clinical_summary(record, hints, body)
         _emit_progress(
             on_progress,
             95,
@@ -272,74 +225,46 @@ class OllamaStructurer(MedicalRecordStructurer):
         )
         return to_persisted_record(record)
 
-    def _should_call_clinical_llm(self, hints: dict[str, Any]) -> bool:
+    def _should_use_clinical_summary_llm(self) -> bool:
         mode = (self.clinical_mode or "hybrid").lower()
-        if mode == "heuristic":
-            return False
-        if mode == "llm":
-            return True
-        # hybrid: only call LLM when heuristics look thin
-        return not self._clinical_hints_sufficient(hints)
+        return mode in ("hybrid", "llm")
 
-    @staticmethod
-    def _clinical_hints_sufficient(hints: dict[str, Any]) -> bool:
-        blocks = hints.get("visit_blocks") or []
-        return bool(
-            len(blocks) >= 1
-            or hints.get("diagnosis_hints")
-            or hints.get("medication_hints")
-        )
-
-    @staticmethod
-    def _clinical_from_hints(hints: dict[str, Any]) -> ExtractionClinicalInfo:
-        entries = hints.get("visit_blocks") or []
-        diagnoses = hints.get("diagnosis_hints") or []
-        meds = hints.get("medication_hints") or []
-        history = None
-        chief = None
-        if entries:
-            chief = entries[-1].get("summary")
-        return ExtractionClinicalInfo(
-            chief_complaint=chief,
-            history=history,
-            diagnosis="; ".join(diagnoses) if diagnoses else None,
-            treatment=None,
-            medications=[Medication(**m) for m in meds],
-            history_entries=[HistoryEntry(**e) for e in entries],
-            notes="Structured mainly from layout/visit heuristics.",
-        )
-
-    @staticmethod
-    def _merge_narrative(
-        clinical: ExtractionClinicalInfo, narrative: ClinicalNarrative
-    ) -> ExtractionClinicalInfo:
-        data = clinical.model_dump()
-        for field in (
-            "chief_complaint",
-            "history",
-            "examination",
-            "treatment",
-            "notes",
-        ):
-            value = getattr(narrative, field)
-            if value:
-                data[field] = value
-        return ExtractionClinicalInfo.model_validate(data)
-
-    def _clinical_user_prompt(self, hints: dict[str, Any], body: str) -> str:
-        recent = (hints.get("visit_blocks") or [])[-4:]
-        if recent:
-            snippets = "\n".join(
-                f"- {item.get('date')}: {item.get('summary')}" for item in recent
+    def _produce_clinical_summary(
+        self,
+        record: ExtractionRecord,
+        hints: dict[str, Any],
+        body: str,
+    ) -> ExtractionRecord:
+        if not has_clinical_hints(hints, body):
+            return record
+        if self._should_use_clinical_summary_llm():
+            try:
+                result = self._chat_model(
+                    model_cls=ClinicalSummaryOutput,
+                    system=CLINICAL_SUMMARY_PROMPT,
+                    user=clinical_summary_user_prompt(
+                        body,
+                        language_hint=hints.get("language_hint")
+                        or record.meta.source_language,
+                    ),
+                    num_predict=CLINICAL_SUMMARY_NUM_PREDICT,
+                )
+                if result.summary and result.summary.strip():
+                    data = record.model_dump()
+                    data["clinical"]["history"] = truncate_clinical_summary(
+                        result.summary.strip()
+                    )
+                    data["meta"]["clinical_summary_source"] = "llm"
+                    return ExtractionRecord.model_validate(data)
+            except Exception:
+                pass
+            return with_clinical_summary_source(
+                finalize_clinical_summary_from_hints(record, hints),
+                "heuristic_fallback",
             )
-            source = snippets
-        else:
-            source = clinical_focus_text(body, max_chars=2500)
-        return (
-            "Summarize the clinical picture.\n"
-            f"Known diagnoses: {hints.get('diagnosis_hints')}\n"
-            f"Known medications: {[m.get('name') for m in (hints.get('medication_hints') or [])]}\n\n"
-            f"TEXT:\n{source}"
+        return with_clinical_summary_source(
+            finalize_clinical_summary_from_hints(record, hints),
+            "heuristic",
         )
 
     @staticmethod
@@ -382,6 +307,7 @@ class OllamaStructurer(MedicalRecordStructurer):
         model_cls: type[BaseModel],
         system: str,
         user: str,
+        num_predict: int | None = None,
     ) -> Any:
         schema = _inline_json_schema(model_cls.model_json_schema())
         payload: dict[str, Any] = {
@@ -391,7 +317,7 @@ class OllamaStructurer(MedicalRecordStructurer):
             "options": {
                 "temperature": 0,
                 "num_ctx": self.num_ctx,
-                "num_predict": self.num_predict,
+                "num_predict": num_predict if num_predict is not None else self.num_predict,
             },
             "messages": [
                 {"role": "system", "content": system},
@@ -460,54 +386,24 @@ class OllamaStructurer(MedicalRecordStructurer):
         return ExtractionRecord.model_validate(data)
 
     @staticmethod
-    def _apply_fallbacks(record: ExtractionRecord, hints: dict[str, Any]) -> ExtractionRecord:
+    def _apply_visit_and_meta(
+        record: ExtractionRecord, hints: dict[str, Any]
+    ) -> ExtractionRecord:
         likely = hints.get("likely_fields") or {}
         data = record.model_dump()
 
-        mapping = {
-            "pet.name": ("pet", "name"),
-            "pet.species": ("pet", "species"),
-            "pet.breed": ("pet", "breed"),
-            "pet.sex": ("pet", "sex"),
-            "pet.date_of_birth": ("pet", "date_of_birth"),
-            "pet.microchip": ("pet", "microchip"),
-            "owner.name": ("owner", "name"),
-            "owner.address": ("owner", "address"),
-            "visit.clinic_name": ("visit", "clinic_name"),
-        }
-        for hint_key, path in mapping.items():
-            if hint_key not in likely:
-                continue
-            section, field = path
-            if data[section].get(field) in (None, "", []):
-                data[section][field] = likely[hint_key]
-
-        if not data["meta"].get("source_language") and hints.get("language_hint"):
-            data["meta"]["source_language"] = hints["language_hint"]
+        if likely.get("visit.clinic_name") and not data["visit"].get("clinic_name"):
+            data["visit"]["clinic_name"] = likely["visit.clinic_name"]
 
         dates = hints.get("visit_dates_found") or []
         if not data["visit"].get("date") and dates:
             data["visit"]["date"] = dates[-1]
 
-        clinical = data["clinical"]
-        if not clinical.get("history_entries"):
-            clinical["history_entries"] = hints.get("visit_blocks") or []
-
-        if not clinical.get("diagnosis") and hints.get("diagnosis_hints"):
-            clinical["diagnosis"] = "; ".join(hints["diagnosis_hints"])
-
-        if not clinical.get("medications") and hints.get("medication_hints"):
-            clinical["medications"] = hints["medication_hints"]
-
-        if not clinical.get("chief_complaint") and clinical.get("history_entries"):
-            clinical["chief_complaint"] = clinical["history_entries"][-1].get("summary")
-
-        # Confidence: demographics + some clinical content.
         has_pet = bool(data["pet"].get("name"))
         has_clinical = bool(
-            clinical.get("diagnosis")
-            or clinical.get("medications")
-            or clinical.get("history_entries")
+            hints.get("visit_blocks")
+            or hints.get("diagnosis_hints")
+            or hints.get("medication_hints")
         )
         if has_pet and has_clinical:
             data["meta"]["extraction_confidence"] = "high"
@@ -517,82 +413,13 @@ class OllamaStructurer(MedicalRecordStructurer):
             data["meta"]["extraction_confidence"] = "low"
 
         missing: list[str] = []
-        for path in (
-            "pet.name",
-            "pet.species",
-            "owner.name",
-        ):
+        for path in ("pet.name", "pet.species", "owner.name"):
             section, field = path.split(".")
             if not data[section].get(field):
                 missing.append(path)
         data["meta"]["missing_fields"] = missing
 
-        species = normalize_species_dog_cat(data["pet"].get("species"))
-        if not species:
-            species = normalize_species_dog_cat(likely.get("pet.species"))
-        if species:
-            data["pet"]["species"] = species
-
-        sex = normalize_sex_male_female(data["pet"].get("sex"))
-        if not sex:
-            sex = normalize_sex_male_female(likely.get("pet.sex"))
-        if sex:
-            data["pet"]["sex"] = sex
-
-        data["pet"]["name"] = resolve_pet_name(
-            data["pet"].get("name"), likely.get("pet.name")
-        )
-        data["pet"]["breed"] = resolve_breed(
-            data["pet"].get("breed"), likely.get("pet.breed")
-        )
-
         return ExtractionRecord.model_validate(data)
-
-    def _should_polish_clinical_summary(self, hints: dict[str, Any]) -> bool:
-        mode = (self.clinical_mode or "hybrid").lower()
-        if mode == "heuristic":
-            return False
-        if mode == "llm":
-            return True
-        return self._clinical_hints_sufficient(hints)
-
-    def _finalize_clinical_summary(
-        self,
-        record: ExtractionRecord,
-        hints: dict[str, Any],
-        body: str,
-        *,
-        on_progress: ProgressCallback | None = None,
-    ) -> ExtractionRecord:
-        baseline_record = finalize_clinical_summary(record)
-        if not self._should_polish_clinical_summary(hints):
-            return baseline_record
-        if not has_clinical_content(baseline_record, hints):
-            return baseline_record
-        _emit_progress(
-            on_progress,
-            80,
-            "clinical_summary_polish",
-            "Polishing the clinical summary with AI (this can take a minute)…",
-        )
-        baseline = (baseline_record.clinical.history or "").strip()
-        try:
-            polished = self._chat_model(
-                model_cls=ClinicalSummaryPolish,
-                system=CLINICAL_SUMMARY_POLISH_PROMPT,
-                user=summary_polish_user_prompt(
-                    baseline, hints, body, record=baseline_record
-                ),
-            )
-            if polished.summary and polished.summary.strip():
-                data = baseline_record.model_dump()
-                data["clinical"]["history"] = truncate_clinical_summary(
-                    polished.summary.strip()
-                )
-                return ExtractionRecord.model_validate(data)
-        except Exception:
-            pass
-        return baseline_record
 
 
 class FakeLLMStructurer(MedicalRecordStructurer):
@@ -789,16 +616,12 @@ class FakeLLMStructurer(MedicalRecordStructurer):
         _emit_progress(
             on_progress,
             50,
-            "clinical_analysis",
-            "Reviewing visits, diagnoses, and medications…",
-        )
-        _emit_progress(
-            on_progress,
-            65,
             "clinical_summary",
             "Writing the clinical summary…",
         )
-        finalized = finalize_clinical_summary(extraction)
+        finalized = with_clinical_summary_source(
+            finalize_clinical_summary(extraction), "heuristic"
+        )
         _emit_progress(
             on_progress,
             95,

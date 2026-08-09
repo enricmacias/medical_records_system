@@ -78,6 +78,15 @@ class MetaInfo(BaseModel):
         default_factory=list,
         description="Important fields that could not be found in the text.",
     )
+    clinical_summary_source: Literal["llm", "heuristic_fallback", "heuristic"] | None = (
+        Field(
+            default=None,
+            description=(
+                "How clinical.history was produced: LLM, heuristic after LLM failure, "
+                "or heuristic-only mode."
+            ),
+        )
+    )
 
 
 class MedicalRecord(BaseModel):
